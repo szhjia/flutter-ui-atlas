@@ -1,0 +1,44 @@
+{
+  "name": "flutter-ui-atlas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Flutter 界面图谱：独立画布与可插拔采集工具",
+  "engines": {
+    "node": ">=22 <26.13"
+  },
+  "scripts": {
+    "atlas": "node packages/cli/index.mjs",
+    "dev": "node packages/cli/index.mjs view --config examples/atlas.config.json",
+    "build": "vite build",
+    "type-check": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs && vitest run",
+    "test:canvas": "vitest run",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.12.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "jsdom": "30.1.3",
+    "playwright": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-darwin-arm64": "1.2.16",
+    "lightningcss-darwin-arm64": "1.33.0"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

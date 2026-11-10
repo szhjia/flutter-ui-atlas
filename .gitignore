@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.runtime/
+public/generated/
+.dart_tool/
+build/
+.flutter-plugins-dependencies
+
+.superpowers/
+
+test-results/
+playwright-report/
+
+.atlas/

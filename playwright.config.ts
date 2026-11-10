@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'tests/browser',fullyParallel:false,workers:1,timeout:30000,use:{baseURL:'http://127.0.0.1:60202',channel:'chrome',headless:true,viewport:{width:1600,height:1000}},webServer:{command:'pnpm exec vite --host 127.0.0.1 --port 60202 --strictPort',url:'http://127.0.0.1:60202',reuseExistingServer:false},reporter:'list'});

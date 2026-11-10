@@ -1,0 +1,12 @@
+name: flutter_ui_atlas
+description: Flutter UI Atlas 的可选导航、场景与就绪适配接口。
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

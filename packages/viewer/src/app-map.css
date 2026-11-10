@@ -1,0 +1,46 @@
+.app-map {color-scheme:light;color:#263444;background:#f7f8fa;height:100dvh;display:flex;flex-direction:column;font:13px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+.app-map button,.app-map select,.app-map input,.map-empty button {font:inherit}
+.app-map button,.app-map select,.map-empty button {border:1px solid #dce1e8;border-radius:7px;background:#fff;color:#344456;padding:8px 12px;cursor:pointer}
+.app-map button:hover {background:#f0f5f8;border-color:#adc1d1}
+.app-map button:focus-visible,.app-map a:focus-visible {outline:3px solid #548cc4;outline-offset:3px}
+.app-map a {color:#28688e;text-decoration:none}
+.map-topbar {display:flex;align-items:center;justify-content:space-between;padding:18px 24px;background:#fff;border-bottom:1px solid #e3e7ed;gap:16px}
+.map-brand {display:flex;align-items:center;gap:12px;flex-shrink:0}
+.map-logo {background:#2d526b;color:#fff;font-size:23px;width:42px;height:42px;display:grid;place-items:center;border-radius:12px}
+.map-brand h1 {font-size:18px;margin:0;letter-spacing:.03em}.map-brand h1 span {font-size:11px;font-weight:500;padding-left:10px;color:#7f8b99}
+.map-brand p {font-size:11px;color:#87919c;margin:5px 0 0}
+.map-top-actions {display:flex;gap:20px;align-items:center}.map-top-actions>span {color:#738091;font-size:12px}
+.map-toolbar {display:flex;align-items:center;gap:12px;padding:12px 24px;background:#fff;border-bottom:1px solid #e3e7ed;flex-wrap:wrap}
+.map-segment {display:flex;border-radius:8px;background:#edf1f5;padding:3px}.map-segment button {border:0;background:transparent;padding:7px 15px;color:#6a7988}.map-segment button[aria-pressed=true] {background:#fff;color:#224f6c;box-shadow:0 1px 4px #1b33441a}
+.map-toolbar>input {width:205px;border:1px solid #dde3eb;border-radius:7px;background:#f9fafb;padding:8px 12px;color:#263444}.map-count {flex:1;color:#8a95a2;font-size:12px}
+.map-main {flex:1;display:flex;min-height:0}.map-stage {flex:1;position:relative;min-width:0;background:#f2f4f7}
+.map-card {width:224px;padding:10px;background:#fff;border:1px solid #d4dce6;border-radius:10px;box-shadow:0 3px 10px #20344a0a}.map-card.is-selected {border-color:#356d91;box-shadow:0 0 0 3px #356d9129}
+.map-card-label {display:flex;justify-content:space-between;color:#83909e;font-size:9px;gap:5px}.map-card h2 {font-size:13px;line-height:1.4;margin:8px 0 10px;font-weight:600}.map-card img {display:block;width:202px;height:438px;object-fit:cover;object-position:top;border:1px solid #eef0f4;border-radius:3px}.map-card footer {font-size:9px;color:#8f99a6;padding-top:8px}.map-capture-error {height:438px;padding:24px;font-size:12px;color:#ab513b;overflow:auto}
+.map-legend {position:absolute;bottom:20px;left:70px;display:flex;align-items:center;gap:15px;background:#ffffffed;border:1px solid #e2e6ec;border-radius:8px;padding:10px 13px;font-size:11px;color:#75818f;z-index:4}.map-legend span {display:flex;align-items:center;gap:6px}.map-legend i {width:22px;border-top:2px solid #287d78}.map-legend i.declared {border-top:2px dashed #909aab}.map-legend label {display:flex;gap:4px;align-items:center}
+.map-inspector {width:354px;flex-shrink:0;overflow:auto;padding:22px;background:#fff;border-left:1px solid #e0e5ec}.map-inspector-heading {display:flex;align-items:center;justify-content:space-between;color:#8a95a1;font-size:11px}.map-inspector-heading button {padding:2px 9px;font-size:19px;border:0}.map-inspector h2 {font-size:21px;margin:12px 0}.map-inspector code {font-size:11px;color:#8594a4;overflow-wrap:anywhere}.map-inspector h3 {font-size:13px;margin-top:24px}
+.map-preview-tabs {display:flex;gap:8px;margin:18px 0 14px}.map-preview-tabs button {flex:1;font-size:12px}.map-preview-tabs button[aria-pressed=true] {background:#eef5fa;border-color:#93b2c9;color:#285a7b}
+.map-detail-image {display:block;width:100%;border-radius:6px;border:1px solid #e6eaf0}.map-live-box {width:308px;height:668px;overflow:hidden;border:1px solid #dbe2ea;border-radius:6px;background:#f7f9fc}.map-live-box iframe {width:393px;height:852px;border:0;transform:scale(.7837);transform-origin:top left;display:block}.map-live-hint {font-size:11px;color:#78899a;line-height:1.6}.map-open {display:block;padding-top:10px;font-size:12px}
+.map-relation {display:flex;flex-direction:column;text-align:left;width:100%;margin:6px 0;gap:5px}.map-relation b {font-size:12px;font-weight:500}.map-relation span {font-size:10px;color:#80909f}.map-muted {color:#8a96a3;font-size:11px;line-height:1.8}
+.map-intro {padding:20px 2px}.map-eyebrow {font-size:10px;color:#86a2b5;letter-spacing:.18em}.map-intro h2 {font-size:28px;line-height:1.5;font-weight:500;margin:22px 0 18px;letter-spacing:.03em}.map-intro p,.map-intro li {line-height:1.9;color:#7c8b99;font-size:12px}.map-intro ol {padding-left:18px;margin:28px 0}.map-intro li {margin:10px 0}.map-scope {border-top:1px solid #e9edf1;padding-top:24px;margin-top:32px}.map-scope b {font-size:12px;font-weight:500}
+.map-status {display:flex;justify-content:space-between;gap:10px;font-size:10px;color:#82909e;background:#fff;border-top:1px solid #e2e7ed;padding:9px 24px}.map-status.is-stale {background:#fff7e7;color:#986a24}.map-no-results {position:absolute;top:40%;left:30%;color:#8793a0}.map-empty {padding:48px;background:#f7f8fa;min-height:100vh;color:#263444}.map-empty code {display:block;white-space:pre-wrap}
+.app-map .react-flow__attribution {font-size:8px}.app-map .react-flow__minimap {width:125px;height:90px;bottom:60px}.app-map .react-flow__controls button {padding:5px;border-radius:0}
+.map-inspector-live{width:440px}.map-live-box{width:395px;height:854px}.map-live-box iframe{transform:none}
+@media(max-width:1100px){.map-top-actions>span{display:none}.map-inspector{width:330px;padding:10px}.map-inspector-live{width:416px}.map-legend{gap:8px;font-size:9px}.map-legend label{display:none}.map-toolbar{gap:8px;padding:10px}.map-topbar{padding:12px}.map-status{flex-wrap:wrap}}
+@media(max-width:720px){.map-inspector{width:280px}.map-legend{display:none}.map-top-actions{gap:8px;font-size:11px}.map-toolbar>input{width:150px}.map-main{min-height:500px}.app-map{height:auto;min-height:100dvh}.map-stage{min-height:600px}.map-top-actions>a{display:none}}
+
+.app-map *, .map-empty * {box-sizing:border-box}
+
+/* 自由布局：标签层统一高于所有路径，字号保持屏幕尺寸。 */
+.app-map .react-flow__edgelabel-renderer{z-index:8;pointer-events:none}
+.atlas-edge-label{position:absolute;pointer-events:all!important;transform-origin:center;box-sizing:border-box;font-size:12px!important;line-height:16px!important;padding:5px 9px!important;border:1px solid #d9e2e7!important;border-radius:7px!important;background:#fff!important;box-shadow:0 2px 5px #20344a12;color:#526779!important;overflow:hidden}
+.atlas-edge-label span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.atlas-edge-label.is-focused{border-color:#6298b7!important;color:#245674!important;box-shadow:0 0 0 2px #6298b71a}
+.atlas-layout-tools{display:flex;gap:5px;position:relative}.app-map button:disabled{opacity:.4;cursor:default}
+.atlas-arrange-confirm{position:absolute;z-index:30;top:44px;right:0;width:290px;padding:16px;background:#fff;box-shadow:0 8px 30px #21374a24;border:1px solid #dbe3e9;border-radius:10px;display:flex;gap:10px;flex-wrap:wrap}.atlas-arrange-confirm span{font-size:12px;color:#7b8896}
+.map-card h2{position:relative;padding-right:22px}.app-map .atlas-lock{position:absolute;right:0;top:-4px;padding:2px 5px;font-size:12px;border:0;color:#69849a}
+.atlas-notice{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 24px;background:#fff6e4;color:#896328;font-size:12px}.atlas-notice button{padding:4px 8px}
+.atlas-ghost{height:100%;box-sizing:border-box;border:2px dashed #9caebe;border-radius:10px;background:#dce6ee55;padding:16px;color:#72869b;font-size:12px}
+.atlas-edge-detail{padding:12px;margin-bottom:20px;border:1px solid #d9e4eb;border-radius:8px;background:#f8fbfd}.atlas-edge-detail p{line-height:1.7;overflow-wrap:anywhere}.atlas-edge-detail span{display:block;color:#7b8c98;font-size:11px;margin-bottom:10px}
+.atlas-inspector-toggle{align-self:flex-start;padding:10px 4px!important;border-radius:0!important;border-right:0!important}
+.map-inspector[hidden]{display:none}.map-card{box-sizing:border-box}.map-card img{box-sizing:border-box}
+@media(prefers-reduced-motion:reduce){.app-map *{animation:none!important;transition:none!important}}
