@@ -1,15 +1,66 @@
+# 操作系统生成文件
+.DS_Store
+._*
+__MACOSX/
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+
+# 编辑器本地状态和临时文件
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+*.swp
+*.swo
+*~
+
+# 本地环境变量，保留可共享的模板
+.env
+.env.*
+!.env.*.example
+!.env.*.sample
+!.env.*.template
+!.env.example
+!.env.sample
+!.env.template
+
+# Node、pnpm 和 Vite
 node_modules/
+.npm/
+.pnpm-store/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 dist/
-.runtime/
-public/generated/
+
+# Dart 和 Flutter
 .dart_tool/
-build/
+.packages
+.pub/
+.pub-cache/
+.flutter-plugins
 .flutter-plugins-dependencies
+build/
 
-.superpowers/
-
+# 测试产物
+coverage/
+.nyc_output/
 test-results/
 playwright-report/
+blob-report/
+playwright/.cache/
 
+# Atlas 和本地开发产物
+.runtime/
+public/generated/
+.superpowers/
 **/.atlas/generated/
 **/.atlas/discovery/
