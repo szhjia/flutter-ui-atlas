@@ -10,6 +10,10 @@ import {AtlasEdge} from './canvas/AtlasEdge';
 import {EdgeLabels} from './canvas/EdgeLabels';
 import {routeEdges} from './canvas/route-edges';
 import type {CanvasNode,RoutedEdge} from './canvas/types';
+import {assertManifest, createPreviewUrl, emptySnapshot, readSourceFingerprint, readViewerSnapshot, safeLink,
+  type AtlasShellConfig, type AtlasViewerConfig, type ViewerSnapshot} from './config';
+
+export type {AtlasHeaderLink, AtlasPreviewConfig, AtlasShellConfig, AtlasViewerConfig} from './config';
 type ScreenNode = Node<{screen: MapScreen;locked:boolean;ghost:boolean;toggle:()=>void}, 'screen'>;
 function ScreenCard({data, selected}: NodeProps<ScreenNode>) {
   const s = data.screen;
@@ -36,7 +40,32 @@ export interface AtlasViewerAdapter {
   title?: string;
   homeUrl?: string;
   captureHint?: string;
-  sharedRoles?: string[];
+  sharedRoles?: readonly string[];
+}
+
+type ViewerPresentation = Omit<AtlasViewerAdapter, 'loadManifest' | 'loadLatestAttempt'> & {shell?: AtlasShellConfig};
+type AtlasViewerProps = {adapter: AtlasViewerAdapter; config?: never} | {config: AtlasViewerConfig; adapter?: never};
+
+function ShellHeader({presentation, map, refresh}: {
+  presentation: ViewerPresentation;
+  map?: AppMapManifest;
+  refresh: () => void;
+}) {
+  const shell = presentation.shell;
+  const links = shell?.headerLinks ?? (presentation.homeUrl ? [{label: '返回工作台 ↗', href: presentation.homeUrl}] : []);
+  return <header className="map-topbar">
+    <div className="map-brand">
+      <span className="map-logo" aria-hidden="true">{shell?.logoText ?? 'A'}</span>
+      <div>
+        <h1>{shell?.title ?? presentation.title ?? 'UI Atlas'} <span>UI 画布</span></h1>
+        <p>{shell?.subtitle ?? '从页面全貌，走进真实体验'}</p>
+      </div>
+    </div>
+    <div className="map-top-actions">
+      {map && <><span>{map.screens.filter(screen => screen.status === 'captured').length} 个已采集页面{map.discovery && ` · ${map.screens.filter(screen => screen.status === 'pending').length} 个待采集`} · {map.edges.filter(edge => edge.status === 'observed').length} 条已验证连线</span><button onClick={refresh}>刷新采集结果</button></>}
+      {links.filter(link => safeLink(link.href)).map((link, index) => <a key={index} href={link.href}>{link.label}</a>)}
+    </div>
+  </header>;
 }
 
 const edgeColor = (status: string)=>status==='observed'?'#287d78':status==='failed'?'#b75b48':'#909aab';
@@ -44,13 +73,13 @@ const edgeColor = (status: string)=>status==='observed'?'#287d78':status==='fail
 function AttemptNotice({attempt, hasMap}: {attempt: CaptureAttempt | null; hasMap: boolean}) {
   if (attempt?.status !== 'failed') return null;
   return <div className="atlas-notice" role="status">
-    最近采集失败{hasMap?'，当前显示上一次成功结果':''}。{attempt.error?.split('\n', 1)[0]} <a href={attempt.report} target="_blank" rel="noreferrer">查看采集报告 ↗</a>
+    最近采集失败{hasMap?'，当前显示上一次成功结果':''}。{attempt.error?.split('\n', 1)[0]} {attempt.report && safeLink(attempt.report) && <a href={attempt.report} target="_blank" rel="noreferrer">查看采集报告 ↗</a>}
   </div>;
 }
 
 type CoverageView = 'flow' | 'unlinked' | 'all';
 
-function MapCanvas({map, attempt, refresh, adapter}: {map: AppMapManifest; attempt: CaptureAttempt | null; refresh: ()=>void; adapter: AtlasViewerAdapter}) {
+function MapCanvas({map, attempt, refresh, adapter}: {map: AppMapManifest; attempt: CaptureAttempt | null; refresh: ()=>void; adapter: ViewerPresentation}) {
   const groupOrder = useMemo(()=>[...new Set(map.screens.map(s=>s.group))],[map]);
   const roles = useMemo(()=>[...new Set(map.screens.map(s=>s.role))],[map]);
   const compare = (a:MapScreen,b:MapScreen)=>roles.indexOf(a.role)-roles.indexOf(b.role)||groupOrder.indexOf(a.group)-groupOrder.indexOf(b.group);
@@ -125,10 +154,7 @@ function MapCanvas({map, attempt, refresh, adapter}: {map: AppMapManifest; attem
     if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();e.shiftKey?controller.redo():controller.undo();return;}
     if(selectedId&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();e.stopPropagation();controller.moveByKeyboard(selectedId,{x:e.key==='ArrowLeft'?-10:e.key==='ArrowRight'?10:0,y:e.key==='ArrowUp'?-10:e.key==='ArrowDown'?10:0});}
   }}>
-    <header className="map-topbar">
-      <div className="map-brand"><span className="map-logo">A</span><div><h1>{adapter.title??'UI Atlas'} <span>UI 画布</span></h1><p>从页面全貌，走进真实体验</p></div></div>
-      <div className="map-top-actions"><span>{map.screens.filter(s=>s.status==='captured').length} 个已采集页面{map.discovery&&` · ${map.screens.filter(s=>s.status==='pending').length} 个待采集`} · {map.edges.filter(e=>e.status==='observed').length} 条已验证连线</span><button onClick={refresh}>刷新采集结果</button>{adapter.homeUrl&&<a href={adapter.homeUrl}>返回工作台 ↗</a>}</div>
-    </header>
+    <ShellHeader presentation={adapter} map={map} refresh={refresh}/>
     <AttemptNotice attempt={attempt} hasMap/>
     <div className="map-toolbar">
       <div className="map-segment" aria-label="身份筛选">{['全部',...roles.filter(r=>!adapter.sharedRoles?.includes(r))].map(item=><button key={item} aria-pressed={role===item} onClick={()=>resetFilters(item,group,query)}>{item==='全部'?'全部身份':`${item}空间`}</button>)}</div>
@@ -184,33 +210,68 @@ function MapCanvas({map, attempt, refresh, adapter}: {map: AppMapManifest; attem
           <h3>页面关系 · {relations.length}</h3>
           {relations.length?relations.map(edge=>{const target=map.screens.find(s=>s.id===(edge.source===selected.id?edge.target:edge.source));return <button className="map-relation" key={edge.id} title={edge.reason ?? edge.sourceFile} onClick={()=>{if(target){setQuery('');setGroup('全部');setRole('全部');if(scope !== 'all' && verifiedIds.has(target.id) !== (scope === 'flow'))setCoverage('all');choose(target.id);const p=geometry.find(n=>n.id===target.id)??{x:0,y:0};void flow.setCenter(p.x+112,p.y+250,{zoom:.75,duration:300});}}}><b>{edge.source===selected.id?'→':'←'} {target?.title}</b><span>{edge.action} · {edge.status==='observed'?'已验证':edge.status==='failed'?'验证失败':'未验证'}</span></button>}):<p className="map-muted">尚未登记该页连线。页面截图不代表入口流程已验证。</p>}
           <p className="map-muted">{!map.discovery&&selected.discoverySource&&`${selected.discoverySource} · `}{selected.state} · {selected.capturedAt?new Date(selected.capturedAt).toLocaleString('zh-CN'):''}</p>
-        </>:<div className="map-intro"><span className="map-eyebrow">SCREEN FLOW</span><h2>把整个应用<br/>放在一起看。</h2><p>已采集卡片展示真实 Flutter 页面截图。选中页面，查看截图、相邻关系或实时预览。</p><ol><li>拖动画布，滚轮缩放</li><li>筛选身份、场景或功能区域</li><li>点击页面，进入实时预览</li></ol><div className="map-scope"><b>本轮采集范围</b><p>{map.scope}</p><p>{map.discovery ? '已验证流程显示实际录到连线的页面。切换到「未连入流程」可查看只有截图的页面和待采集候选。' : '截图不代表流程验证。画布只显示已发现的页面和已记录的关系。'}</p>{Boolean(map.diagnostics?.length)&&<details><summary>采集提示 · {map.diagnostics?.length} 条</summary><ul>{map.diagnostics?.slice(0,10).map((message,index)=><li key={index}>{message}</li>)}</ul></details>}</div></div>}
+        </>:<div className="map-intro"><span className="map-eyebrow">SCREEN FLOW</span><h2>把整个应用<br/>放在一起看。</h2><p>已采集卡片展示真实 Flutter 页面截图。选中页面，查看截图、相邻关系或实时预览。</p><ol><li>拖动画布，滚轮缩放</li><li>筛选身份、场景或功能区域</li><li>点击页面，进入实时预览</li></ol>{adapter.shell?.introNote && <p className="atlas-intro-note">{adapter.shell.introNote}</p>}<div className="map-scope"><b>本轮采集范围</b><p>{map.scope}</p><p>{map.discovery ? '已验证流程显示实际录到连线的页面。切换到「未连入流程」可查看只有截图的页面和待采集候选。' : '截图不代表流程验证。画布只显示已发现的页面和已记录的关系。'}</p>{Boolean(map.diagnostics?.length)&&<details><summary>采集提示 · {map.diagnostics?.length} 条</summary><ul>{map.diagnostics?.slice(0,10).map((message,index)=><li key={index}>{message}</li>)}</ul></details>}</div></div>}
       </aside>
     </div>
     <footer className={`map-status ${stale||map.runtimeErrors?.length?'is-stale':''}`}><span>{map.runtimeErrors?.length ? `采集运行异常 ${map.runtimeErrors.length} 项，请查看采集报告 · ` : ''}{stale?'● 源码已变化，请重新采集':source?'● 采集后源码未变（不替代构建验证）':'● 源码新鲜度未核验'} · {new Date(map.capturedAt).toLocaleString('zh-CN')}</span><span>{map.viewport.width} × {map.viewport.height} · {map.theme}{map.sourceFingerprint&&` · 指纹 ${map.sourceFingerprint.slice(0,10)}`}</span></footer>
   </main>;
 }
 
-export default function AppMap({adapter}: {adapter: AtlasViewerAdapter}) {
-  const [map,setMap]=useState<AppMapManifest|null>(null);
-  const [error,setError]=useState('');
-  const [attempt,setAttempt] = useState<CaptureAttempt|null>(null);
+async function readAdapterSnapshot(adapter: AtlasViewerAdapter): Promise<ViewerSnapshot> {
+  const [manifest, latest] = await Promise.allSettled([
+    Promise.resolve().then(() => adapter.loadManifest()),
+    Promise.resolve().then(() => adapter.loadLatestAttempt?.() ?? null),
+  ]);
+  const attempt = latest.status === 'fulfilled' ? latest.value : null;
+  try {
+    if (manifest.status === 'rejected') throw manifest.reason;
+    assertManifest(manifest.value);
+    return {map: manifest.value, attempt, error: ''};
+  } catch (error) {
+    return {map: null, attempt, error: error instanceof Error ? error.message : String(error)};
+  }
+}
+
+export default function AppMap({adapter, config}: AtlasViewerProps) {
+  const presentation = useMemo<ViewerPresentation>(() => {
+    if (adapter) return adapter;
+    const {shell, layoutKey, sharedRoles, captureHint, fingerprintUrl, preview} = config;
+    return {
+      shell, layoutKey, sharedRoles, captureHint,
+      previewUrl: createPreviewUrl(preview),
+      isolatedPreview: Boolean(preview && 'sessionParam' in preview && preview.sessionParam),
+      sourceFingerprint: fingerprintUrl ? () => readSourceFingerprint(fingerprintUrl) : undefined,
+    };
+  }, [adapter, config]);
+
+  const [{map, attempt, error}, setSnapshot] = useState(emptySnapshot);
   const revision = useRef(0);
   const load = useCallback(() => {
     const request = ++revision.current;
-    setError('');
-    void Promise.resolve().then(() => adapter.loadLatestAttempt?.() ?? null).then(value => {
-      if (request === revision.current) setAttempt(value);
-    }).catch(() => { if (request === revision.current) setAttempt(null); });
-    void Promise.resolve().then(() => adapter.loadManifest()).then(value => {
-      if(value.schemaVersion!==1||!Array.isArray(value.screens)||!Array.isArray(value.edges))throw Error('采集文件格式不正确');
-      if (request === revision.current) setMap(value);
-    }).catch(error => { if (request === revision.current) setError(String(error.message)); });
-  },[adapter]);
+    setSnapshot(previous => previous.error ? {...previous, error: ''} : previous);
+    const pending = adapter ? readAdapterSnapshot(adapter) : readViewerSnapshot(config);
+    void pending.then(snapshot => {
+      if (request === revision.current) setSnapshot(snapshot);
+    });
+  }, [adapter, config]);
   useEffect(() => {
     load();
     return () => { revision.current++; };
-  },[load]);
-  if(!map||error)return <main className="map-empty"><h1>应用地图</h1><p>{error||'正在加载真实页面…'}</p><AttemptNotice attempt={attempt} hasMap={false}/>{error&&<><code>{adapter.captureHint??'请运行项目的 Atlas 采集适配器'}</code><p><button onClick={load}>重新加载</button></p></>}</main>;
-  return <ReactFlowProvider><MapCanvas map={map} attempt={attempt?.captureId===map.captureId?null:attempt} refresh={load} adapter={adapter}/></ReactFlowProvider>;
+  }, [load]);
+
+  if (!map) return <main className="app-map">
+    <ShellHeader presentation={presentation} refresh={load}/>
+    <AttemptNotice attempt={attempt} hasMap={false}/>
+    <section className="map-empty" aria-label="采集结果">
+      {error ? <>
+        <p role="alert">{error}</p>
+        <code>{presentation.captureHint ?? '请运行项目的 Atlas 采集适配器'}</code>
+        <p><button onClick={load}>重新加载</button></p>
+      </> : <p role="status">正在加载真实页面…</p>}
+    </section>
+  </main>;
+
+  return <ReactFlowProvider>
+    <MapCanvas map={map} attempt={attempt?.captureId === map.captureId ? null : attempt} refresh={load} adapter={presentation}/>
+  </ReactFlowProvider>;
 }

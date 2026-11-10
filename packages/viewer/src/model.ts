@@ -27,7 +27,7 @@ export interface CaptureAttempt {
   error: string | null;
   report: string;
 }
-export function visibleScreens(map: AppMapManifest, role: string, group: string, query: string, sharedRoles: string[] = []) {
+export function visibleScreens(map: AppMapManifest, role: string, group: string, query: string, sharedRoles: readonly string[] = []) {
   const search = query.trim().toLowerCase();
   return map.screens.filter(screen => (role === '全部' || screen.role === role || sharedRoles.includes(screen.role)) &&
     (group === '全部' || screen.group === group) &&

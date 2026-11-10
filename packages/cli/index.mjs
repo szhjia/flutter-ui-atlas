@@ -48,7 +48,12 @@ async function view(input) {
   const previewUrls = custom ? Object.fromEntries(Object.entries(config.previewUrls ?? {})
     .map(([id, address]) => [id, webUrl(address).href])) : {};
   const activeAdapter = config.discovery ?? config.adapter;
-  const preview = config.discovery?.preview;
+  const viewer = config.viewer;
+  const preview = viewer?.preview ?? config.discovery?.preview;
+  const browserPreview = preview
+    ? {origin: webUrl(preview.origin).origin, sessionParam: preview.sessionParam, entries: preview.entries, query: preview.query}
+    : !custom ? {routeMode: config.routeMode === 'pathname' ? 'pathname' : 'hash'}
+    : Object.keys(previewUrls).length ? {urls: previewUrls} : undefined;
   const sourceFingerprint = custom
     ? activeAdapter?.sourceFingerprint?.bind(activeAdapter)
     : (config.sourceFiles?.length ? () => sourceFingerprintForFiles(config.sourceFiles, directory)?.() : undefined);
@@ -59,9 +64,12 @@ async function view(input) {
     root,
     publicDir: false,
     define: {__ATLAS_CONFIG__: JSON.stringify({
-      publicPath, previewUrls, title: config.title, hasSourceFingerprint: Boolean(sourceFingerprint),
-      preview: preview ? {origin: webUrl(preview.origin).origin, sessionParam: preview.sessionParam} : undefined,
-      previewRouteMode: custom ? undefined : (config.routeMode === 'pathname' ? 'pathname' : 'hash'),
+      artifactPaths: [publicPath],
+      shell: {title: config.title ?? 'Flutter UI Atlas', ...viewer?.shell},
+      sharedRoles: viewer?.sharedRoles,
+      captureHint: viewer?.captureHint ?? 'rtk proxy pnpm atlas capture --config <配置文件>',
+      fingerprintUrl: sourceFingerprint ? '/__atlas/source' : undefined,
+      preview: browserPreview,
       layoutKey: config.layoutKey ?? `atlas:${createHash('sha256').update(output).digest('hex').slice(0, 16)}:${viewport.width}x${viewport.height}:v1`,
     })},
     server: {host: '127.0.0.1', port, strictPort: true},
@@ -89,8 +97,8 @@ async function view(input) {
               'Content-Type': path.endsWith('.png') ? 'image/png' : 'application/json',
               'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store',
             }).end(data);
-          } catch {
-            response.writeHead(404).end();
+          } catch (error) {
+            response.writeHead(error.code === 'ENOENT' || error.code === 'ENOTDIR' ? 404 : 500).end();
           }
         });
       },

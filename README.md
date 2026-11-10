@@ -93,3 +93,7 @@ rtk proxy pnpm atlas view --config examples/atlas-discovery.mjs
 ```
 
 手动录制从应用入口打开隔离 Chrome，操作完成后在终端按回车。普通路由候选由项目适配器从已有定义派生。Atlas 对实际到达、内容就绪的页面截图，对已确认的真实操作生成连线。新候选和缺少复现数据的候选显示为「待采集」。独立画布实时预览需要应用服务继续运行。
+
+### 声明式画布外壳
+
+独立 CLI 的 `viewer` 配置和 React Viewer 的 `config` 属性共用 Atlas 外壳。项目可以声明页眉品牌、导航链接、空详情区说明和预览入口。省略外壳配置即可使用默认样式。字段、默认值与旧适配器的兼容方式见[声明式 Viewer 外壳](docs/协议与适配接口.md#声明式-viewer-外壳)。
