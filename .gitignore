@@ -11,4 +11,5 @@ build/
 test-results/
 playwright-report/
 
-.atlas/
+**/.atlas/generated/
+**/.atlas/discovery/

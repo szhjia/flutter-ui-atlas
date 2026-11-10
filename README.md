@@ -1,13 +1,38 @@
 # Flutter UI Atlas · Flutter 界面图谱
 
-把真实 Flutter 页面放进全局画布，查看页面状态、导航连线、采集截图，并进入真实 Web 页面操作。独立开发工具，当前版本 `0.1.0`，本地使用，尚未发布 npm/pub 包。
+把真实 Flutter 页面放进全局画布，查看页面状态、导航连线、采集截图，并进入真实 Web 页面操作。独立开发工具，当前版本 `0.1.0`，可打包为全局 npm CLI。公开 npm 包尚未发布。
+
+## 全局 CLI
+
+先从 Atlas 源码根目录生成安装包。安装使用 Node.js 22 或以上，采集和录制使用本机 Google Chrome。
+
+```sh
+rtk proxy pnpm install --frozen-lockfile
+rtk proxy pnpm run pack:cli
+rtk proxy npm install --global .runtime/packages/flutter-ui-atlas-0.1.0.tgz
+```
+
+从 Flutter 工程根目录运行 `atlas init`。终端会询问工程显示名、Flutter Web 地址、画布端口和入口就绪文字；脚本可用 `atlas init --yes` 接受默认值，也可通过参数指定这些值。提交生成的 `.atlas/atlas.yaml`、`README.md` 和 `.gitignore`，把生成结果留在本机。
+
+```sh
+atlas init
+# 启动配置中指定的 Flutter Web 开发服务后
+atlas build
+atlas view
+```
+
+`build` 访问已运行的开发地址。初始化模板默认采集回环地址的单个入口，就绪文字需与页面上的可见文字完全一致；留空时登记候选，显示「待采集」。结果和失败报告默认写到 `.atlas/generated/`，采集失败时画布保留上一批成功图谱。按 `atlas view` 打印的地址打开画布，端口冲突时用 `atlas view --port <端口>`。Flutter 停止后仍可看截图和连线，实时预览需要原开发地址可用。
+
+多页采集可在 YAML 中配置 `screens` 和 `edges`。已有可识别的 MJS 适配器时，`atlas init` 会引用它，也可用 `--adapter-config <文件>` 显式指定。提供发现与录制能力的适配器可直接使用 `atlas record`。CLI 优先使用显式 `--config`，其次读取 Flutter 工程的 `.atlas/atlas.yaml`，再回退到旧 JSON/MJS 配置。未初始化的工程仍可用 `atlas build --url <地址> --ready-text <文字>`，新的结果同样写入 `.atlas/generated/`。旧 `.dart_tool/atlas/generated/` 产物可完整复制到新目录后继续查看。旧的 `atlas capture` 等同于 `atlas build`。
+
+全局包提供预编译的 Viewer。浏览器采集发生在独立会话中，Flutter 生产编译和发布使用应用原有命令。下文的可选 Dart 适配示例使用单独的演示入口。
 
 ## 工程结构
 
 ```text
 packages/viewer/             React Flow 画布，可嵌入其他开发工作台
 packages/capture/            浏览器采集器、声明式适配器与 BrowserAdapter 接口
-packages/cli/                本地 capture 与 view 命令
+packages/cli/                全局 build、view 与 record 命令
 packages/flutter_ui_atlas/   可选 Flutter 导航、场景与就绪接口
 examples/flutter_app/       独立 Flutter 应用，普通入口与 Atlas 入口分离
 examples/capture.mjs        独立应用的浏览器适配器与采集入口
@@ -31,7 +56,8 @@ rtk proxy flutter build web --debug --no-web-resources-cdn --target lib/main.dar
 rtk proxy python3 -m http.server 60210 --bind 127.0.0.1 --directory build/web
 
 # 终端二，从 Atlas 工程根目录运行
-rtk proxy pnpm atlas capture --config examples/atlas.config.json
+rtk proxy pnpm build
+rtk proxy pnpm atlas build --config examples/atlas.config.json
 rtk proxy pnpm atlas view --config examples/atlas.config.json
 ```
 
@@ -39,7 +65,7 @@ rtk proxy pnpm atlas view --config examples/atlas.config.json
 
 ## 接入其他 Flutter Web 应用
 
-复制示例 JSON 到项目自己的开发工具目录，配置 `baseUrl`、页面 ID、路由和能区分页面状态的可见内容。使用 `routeMode: "pathname"` 支持路径路由。需要复现的页面操作通过连线的 `click` 登记；省略时只展示声明关系。启动项目自身的 Web 服务，再运行 Atlas 两条命令。可从任意目录使用 `rtk proxy pnpm --dir <Atlas目录> atlas capture --config <配置绝对路径>`，或直接用 Node 执行 `packages/cli/index.mjs`。
+复制示例 JSON 到项目自己的开发工具目录，配置 `baseUrl`、页面 ID、路由和能区分页面状态的可见内容。使用 `routeMode: "pathname"` 支持路径路由。需要复现的页面操作通过连线的 `click` 登记；省略时只展示声明关系。启动项目自身的 Web 服务，再运行 Atlas 两条命令。可从任意目录运行 `rtk proxy atlas build --config <配置绝对路径>`。
 
 登录、数据准备或自定义路由可使用可信本地 `.mjs` 配置。默认导出含 `adapter`、`output` 等设置的对象，选填 `previewUrls` 为按页面 ID 索引的 HTTP(S) 地址。没有地址时，独立画布仍支持截图和关系查看。适配接口、判据和配置字段见 [协议与适配接口](docs/协议与适配接口.md)。
 
@@ -83,10 +109,10 @@ rtk proxy flutter analyze --no-pub
 
 ## 自动发现和流程录制
 
-自动模式使用独立的 `discovery` 配置与产物目录。启动上文的 Flutter Web 示例后，在 Atlas 根目录执行：
+自动模式使用独立的 `discovery` 配置与产物目录。启动上文的 Flutter Web 示例并构建 Viewer 后，在 Atlas 根目录执行：
 
 ```sh
-rtk proxy pnpm atlas capture --config examples/atlas-discovery.mjs
+rtk proxy pnpm atlas build --config examples/atlas-discovery.mjs
 rtk proxy pnpm atlas record --config examples/atlas-discovery.mjs
 rtk proxy pnpm atlas record --config examples/atlas-discovery.mjs --journeys
 rtk proxy pnpm atlas view --config examples/atlas-discovery.mjs

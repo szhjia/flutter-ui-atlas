@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {createServer} from 'node:net';
+import {request} from 'node:http';
 import {mkdtemp, mkdir, rm, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -41,6 +42,19 @@ test('采集配置无效时仍能用相同配置查看已有地图及失败报�
         }
       });
     });
+    const viewer = `http://127.0.0.1:${port}`;
+    const html = await (await fetch(viewer)).text();
+    const script = html.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
+    assert(script, '安装后的画布应加载预编译脚本');
+    assert.equal((await fetch(viewer + script)).status, 200);
+    assert.equal((await fetch(viewer + '/src/main.tsx')).status, 404);
+    const untrusted = await new Promise((resolve, reject) => {
+      request(viewer, {headers: {Host: 'external.invalid'}}, response => {
+        response.resume();
+        resolve(response.statusCode);
+      }).on('error', reject).end();
+    });
+    assert.equal(untrusted, 421);
     const base = `http://127.0.0.1:${port}/generated`;
     assert.equal((await (await fetch(base+'/manifest.json')).json()).captureId, 'old');
     const attempt = await (await fetch(base+'/latest-attempt.json')).json();

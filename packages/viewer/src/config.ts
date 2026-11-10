@@ -58,8 +58,7 @@ export function createPreviewUrl(preview: AtlasViewerConfig['preview']) {
     }
     if ('routeMode' in preview) {
       const url = httpUrl(screen.entry);
-      if (!url || (preview.localOnly && (url.protocol !== 'http:' ||
-        !['127.0.0.1', 'localhost'].includes(url.hostname)))) return null;
+      if (!url || (preview.localOnly && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) return null;
       if (preview.routeMode === 'hash' && (preview.localOnly || !url.hash)) url.hash = screen.route;
       return url.href;
     }

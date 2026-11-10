@@ -1,28 +1,39 @@
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {dirname, resolve} from 'node:path';
-import {fileURLToPath, pathToFileURL} from 'node:url';
+import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {parseArgs} from 'node:util';
-import {chromium} from 'playwright';
 import {capture} from '../capture/index.mjs';
 import {runDiscovery} from '../capture/discovery.mjs';
 import {declarativeConfig, sourceFingerprintForFiles, webUrl} from '../capture/declarative.mjs';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
-const usage = '用法：atlas capture|record|view --config <配置文件> [--journeys]';
+import {resolveProjectConfig, validateAtlasOutput} from './project.mjs';
+import {initAtlas} from './init.mjs';
+import {localWebDiscovery} from './local-web.mjs';
+import {serveViewer} from './view-server.mjs';
 
-async function readConfig(file) {
-  const path = resolve(file);
-  const directory = dirname(path);
-  const custom = path.endsWith('.mjs');
-  if (!custom && !path.endsWith('.json')) throw Error('配置文件必须是 .json 或 .mjs');
-  const config = custom ? (await import(pathToFileURL(path))).default : JSON.parse(await readFile(path, 'utf8'));
-  if (!config || typeof config !== 'object' || Array.isArray(config)) throw Error('配置必须是对象');
+const usage = `用法：
+  atlas init [--name <工程名>] [--url <Flutter Web 地址>] [--port <画布端口>] [--ready-text <就绪文字>] [--yes]
+  atlas init --adapter-config <本地 MJS 配置> [--name <工程名>] [--port <画布端口>] [--yes]
+  atlas build --url <本地 Flutter Web 地址> [--ready-text <就绪文字>]
+  atlas build|capture [--config <配置文件>]
+  atlas record [--config <配置文件>] [--journeys]
+  atlas view [--config <配置文件>] [--port <端口>]
+  atlas --help | --version`;
+
+async function artifactLocation({config, directory, managed}) {
   const publicPath = config.publicPath ?? '/generated';
   if (!/^\/(?:[\w-]+\/)*[\w-]+$/.test(publicPath)) throw Error('publicPath 必须是以 / 开头的资源路径');
   const output = config.output ?? '.atlas/generated';
   if (typeof output !== 'string' || !output.trim()) throw Error('output 必须是目录路径');
-  return {config, custom, directory, publicPath, output: resolve(directory, output)};
+  const path = resolve(directory, output);
+  if (managed) await validateAtlasOutput(directory, path);
+  return {publicPath, output: path};
+}
+
+async function openChrome(headless) {
+  const {chromium} = await import('playwright');
+  return chromium.launch({channel: 'chrome', headless});
 }
 
 const defaultViewport = {width: 393, height: 852};
@@ -42,8 +53,8 @@ function captureAdapter({config, custom, directory}) {
   return config.adapter;
 }
 
-async function view(input) {
-  const {config, custom, directory, output, publicPath} = input;
+async function view(input, portOverride) {
+  const {config, custom, directory, output, publicPath, implicit, entryMode} = input;
   const viewport = validViewport(config.viewport) ? config.viewport : defaultViewport;
   const previewUrls = custom ? Object.fromEntries(Object.entries(config.previewUrls ?? {})
     .map(([id, address]) => [id, webUrl(address).href])) : {};
@@ -52,84 +63,78 @@ async function view(input) {
   const preview = viewer?.preview ?? config.discovery?.preview;
   const browserPreview = preview
     ? {origin: webUrl(preview.origin).origin, sessionParam: preview.sessionParam, entries: preview.entries, query: preview.query}
+    : implicit || entryMode ? {routeMode: 'pathname', localOnly: true}
     : !custom ? {routeMode: config.routeMode === 'pathname' ? 'pathname' : 'hash'}
     : Object.keys(previewUrls).length ? {urls: previewUrls} : undefined;
   const sourceFingerprint = custom
     ? activeAdapter?.sourceFingerprint?.bind(activeAdapter)
     : (config.sourceFiles?.length ? () => sourceFingerprintForFiles(config.sourceFiles, directory)?.() : undefined);
-  const port = config.port ?? 60200;
+  const port = portOverride ?? config.port ?? 60200;
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error('port 必须是有效的 TCP 端口');
-  const {createServer} = await import('vite');
-  const server = await createServer({
-    root,
-    publicDir: false,
-    define: {__ATLAS_CONFIG__: JSON.stringify({
-      artifactPaths: [publicPath],
-      shell: {title: config.title ?? 'Flutter UI Atlas', ...viewer?.shell},
-      sharedRoles: viewer?.sharedRoles,
-      captureHint: viewer?.captureHint ?? 'rtk proxy pnpm atlas capture --config <配置文件>',
-      fingerprintUrl: sourceFingerprint ? '/__atlas/source' : undefined,
-      preview: browserPreview,
-      layoutKey: config.layoutKey ?? `atlas:${createHash('sha256').update(output).digest('hex').slice(0, 16)}:${viewport.width}x${viewport.height}:v1`,
-    })},
-    server: {host: '127.0.0.1', port, strictPort: true},
-    plugins: [{
-      name: 'atlas-artifacts',
-      configureServer(server) {
-        if (sourceFingerprint) server.middlewares.use('/__atlas/source', async (_request, response) => {
-          try {
-            const fingerprint = await sourceFingerprint();
-            response.writeHead(200, {'Content-Type': 'application/json', 'Cache-Control': 'no-store'})
-              .end(JSON.stringify({fingerprint}));
-          } catch {
-            response.writeHead(503).end();
-          }
-        });
-        server.middlewares.use(publicPath, async (request, response) => {
-          const path = (request.url ?? '').split('?', 1)[0];
-          if (!/^\/(?:manifest\.json|latest-attempt\.json|[0-9TZ-]+\/(?:manifest\.json|attempt\.json|[0-9]+\.png))$/.test(path)) {
-            response.writeHead(404).end();
-            return;
-          }
-          try {
-            const data = await readFile(resolve(output, `.${path}`));
-            response.writeHead(200, {
-              'Content-Type': path.endsWith('.png') ? 'image/png' : 'application/json',
-              'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store',
-            }).end(data);
-          } catch (error) {
-            response.writeHead(error.code === 'ENOENT' || error.code === 'ENOTDIR' ? 404 : 500).end();
-          }
-        });
-      },
-    }],
-  });
-  await server.listen();
-  server.printUrls();
+  await serveViewer({port, output, publicPath, sourceFingerprint, config: {
+    artifactPaths: [publicPath],
+    shell: {title: config.title ?? 'Flutter UI Atlas', ...viewer?.shell},
+    sharedRoles: viewer?.sharedRoles,
+    captureHint: viewer?.captureHint ?? (implicit
+      ? 'atlas build --url <本地 Flutter Web 地址> --ready-text <就绪文字>' : 'atlas build'),
+    fingerprintUrl: sourceFingerprint ? '/__atlas/source' : undefined,
+    preview: browserPreview,
+    layoutKey: config.layoutKey ?? `atlas:${createHash('sha256').update(output).digest('hex').slice(0, 16)}:${viewport.width}x${viewport.height}:v1`,
+  }});
 }
 
 export async function runAtlas(args = process.argv.slice(2)) {
   try {
     const {positionals, values} = parseArgs({
-      args, allowPositionals: true, options: {config: {type: 'string'}, help: {type: 'boolean', short: 'h'}, journeys: {type: 'boolean'}},
+      args, allowPositionals: true, options: {
+        config: {type: 'string'}, help: {type: 'boolean', short: 'h'},
+        version: {type: 'boolean'}, journeys: {type: 'boolean'},
+        url: {type: 'string'}, 'ready-text': {type: 'string'}, port: {type: 'string'},
+        name: {type: 'string'}, yes: {type: 'boolean', short: 'y'}, 'adapter-config': {type: 'string'},
+      },
     });
     if (values.help) {
       console.log(usage);
       return 0;
     }
-    const [command] = positionals;
-    if (!['capture', 'record', 'view'].includes(command) || positionals.length !== 1 || !values.config || (values.journeys && command !== 'record')) throw Error(usage);
-    const input = await readConfig(values.config);
-    if (command === 'view') {
-      await view(input);
+    if (values.version) {
+      const {version} = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+      console.log(version);
       return 0;
     }
-    const {discovery, viewport = defaultViewport} = input.config;
+    const [command] = positionals;
+    if (command === 'init') {
+      if (positionals.length !== 1 || values.config !== undefined || values.journeys) throw Error(usage);
+      const file = await initAtlas(values);
+      console.log(`已生成 ${file}\n启动 Flutter Web 后运行 atlas build 和 atlas view。`);
+      return 0;
+    }
+    const building = command === 'build' || command === 'capture';
+    if (positionals.length !== 1 || (!building && command !== 'record' && command !== 'view') ||
+      values.name !== undefined || values.yes || values['adapter-config'] !== undefined ||
+      (values.journeys && command !== 'record') || (values.port !== undefined && command !== 'view') ||
+      ((values.url !== undefined || values['ready-text'] !== undefined) && !building) ||
+      (values['ready-text'] !== undefined && (!values.url || !values['ready-text'].trim()))) throw Error(usage);
+    const project = await resolveProjectConfig({configFile: values.config});
+    const input = {...project, ...await artifactLocation(project)};
+    if (command === 'view') {
+      await view(input, values.port === undefined ? undefined : Number(values.port));
+      return 0;
+    }
+    if (values.url !== undefined && !project.implicit) throw Error('当前工程已有配置，请使用配置中的开发地址。');
+    if (project.implicit && (!building || !values.url)) {
+      throw Error(building ? '请用 --url 指定已运行的本地 Flutter Web 地址。' : '录制需要 discovery 配置。');
+    }
+    if (project.entryMode && !building) throw Error('录制需要 discovery 配置，可通过 adapterConfig 接入');
+    const discovery = project.implicit ? localWebDiscovery(values.url, values['ready-text']?.trim())
+      : project.entryMode ? localWebDiscovery(input.config.baseUrl, input.config.readyText?.trim() || undefined)
+      : input.config.discovery;
+    const viewport = input.config.viewport ?? defaultViewport;
     if (discovery) {
       if (!validViewport(viewport)) throw Error('viewport 的 width 和 height 必须是正整数');
-      const mode = command === 'capture' ? 'capture' : values.journeys ? 'journeys' : 'manual';
+      const mode = building ? 'capture' : values.journeys ? 'journeys' : 'manual';
       const result = await runDiscovery({...input, discovery, viewport, mode,
-        launchBrowser: () => chromium.launch({channel: 'chrome', headless: mode !== 'manual'}),
+        launchBrowser: () => openChrome(mode !== 'manual'),
       });
       console.log(JSON.stringify({
         captureId: result.captureId,
@@ -145,7 +150,7 @@ export async function runAtlas(args = process.argv.slice(2)) {
       viewport: input.config.viewport ?? defaultViewport,
       requireObservedEdges: input.config.requireObservedEdges,
       adapter: () => captureAdapter(input),
-      launchBrowser: () => chromium.launch({channel: 'chrome', headless: true}),
+      launchBrowser: () => openChrome(true),
     });
     const summary = {
       captureId: result.captureId, pages: result.screens.length,

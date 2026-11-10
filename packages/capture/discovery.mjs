@@ -225,6 +225,9 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
         }
         if (session.errors?.length) result.runtimeErrors.push(...session.errors);
       }
+      if (discovery.requireCapture && declared.some(({id}) => nodes.get(id)?.status !== 'captured')) {
+        throw Error('入口、路由或页面内容在截图前发生变化，保留上一批图谱。');
+      }
     } else if (mode === 'journeys') {
       if (typeof journeys !== 'function') throw Error('当前配置未提供测试录制场景');
       await journeys({browser, viewport, watch});
