@@ -8,6 +8,7 @@ declare const __ATLAS_CONFIG__: {
   title?: string;
   hasSourceFingerprint: boolean;
   previewRouteMode?: 'hash' | 'pathname';
+  preview?: {origin: string; sessionParam?: string};
 } | undefined;
 
 const config = typeof __ATLAS_CONFIG__ === 'undefined' ? undefined : __ATLAS_CONFIG__;
@@ -31,7 +32,17 @@ const adapter: AtlasViewerAdapter = {
       return response.ok ? (await response.json()).fingerprint ?? null : null;
     },
   }),
-  ...(!config ? {
+  ...(config?.preview ? {
+    isolatedPreview: Boolean(config.preview.sessionParam),
+    previewUrl: (screen, sessionId) => {
+      if (!screen.previewPath?.startsWith('/') || screen.previewPath.startsWith('//')) return null;
+      const preview = config.preview!;
+      const url = new URL(screen.previewPath, preview.origin);
+      if (url.origin !== preview.origin || url.username || url.password) return null;
+      if (preview.sessionParam) url.searchParams.set(preview.sessionParam, sessionId);
+      return url.href;
+    },
+  } : !config ? {
     previewUrl: screen => {
       const url = new URL(screen.entry);
       if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.protocol !== 'http:') {

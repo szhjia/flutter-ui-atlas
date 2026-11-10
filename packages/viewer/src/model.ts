@@ -1,11 +1,13 @@
 export interface MapScreen {
   id: string; role: string; entry: string; route: string; title: string;
-  group: string; state: string; status: 'captured' | 'failed'; image?: string;
+  group: string; state: string; status: 'captured' | 'pending' | 'failed'; image?: string;
   error?: string; capturedAt?: string; actualRoute?: string;
+  discoverySource?: string; previewPath?: string;
 }
 export interface MapEdge {
   id: string; source: string; target: string; action: string;
   sourceFile: string; status: 'observed' | 'declared' | 'failed'; reason?: string;
+  recordingSources?: ('manual' | 'test')[];
 }
 export interface AppMapManifest {
   schemaVersion: number; captureId: string; capturedAt: string;
@@ -13,6 +15,7 @@ export interface AppMapManifest {
   theme: string; scenarioId: string; seedVersion: string; scope: string;
   screens: MapScreen[]; edges: MapEdge[];
   runtimeErrors?: string[];
+  discovery?: boolean; diagnostics?: string[];
 }
 export interface CaptureAttempt {
   captureId: string;

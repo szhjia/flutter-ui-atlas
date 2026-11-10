@@ -22,7 +22,7 @@ export function validateCatalog({screens, edges}) {
   }
 }
 
-function errorMessage(error) {
+export function errorMessage(error) {
   return stripVTControlCharacters(error instanceof Error ? error.message : String(error));
 }
 
@@ -37,7 +37,7 @@ async function writeAtomic(output, filename, value, captureId) {
   }
 }
 
-async function createBatch(output) {
+export async function createBatch(output) {
   await mkdir(output, {recursive: true});
   for (let suffix = 0; ; suffix++) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -182,12 +182,19 @@ export async function capture({
     stage: failure?.stage ?? (failed ? 'capture' : 'complete'), error: batchError,
     report: artifact('attempt.json'),
   };
+  await publishBatch({output, directory, captureId, result, attempt});
+  if (failed) console.error(`采集失败，未更新当前画布；报告：${resolve(directory, 'attempt.json')}`);
+  if (failure) throw failure.cause;
+  return result;
+}
+
+export async function publishBatch({output, directory, captureId, result, attempt}) {
   try {
     if (result) await writeFile(resolve(directory, 'manifest.json'), JSON.stringify(result, null, 2));
     await writeAtomic(directory, 'attempt.json', attempt, captureId);
     await writeAtomic(output, 'latest-attempt.json', attempt, captureId);
     // 当前地图是最后的发布动作。最近尝试不可写时，旧图仍可读。
-    if (!failed) await writeAtomic(output, 'manifest.json', result, captureId);
+    if (attempt.status === 'passed') await writeAtomic(output, 'manifest.json', result, captureId);
   } catch (error) {
     const publicationFailure = {
       ...attempt, status: 'failed', stage: 'publication',
@@ -202,7 +209,4 @@ export async function capture({
     }
     throw error;
   }
-  if (failed) console.error(`采集失败，未更新当前画布；报告：${resolve(directory, 'attempt.json')}`);
-  if (failure) throw failure.cause;
-  return result;
 }

@@ -80,3 +80,16 @@ rtk proxy flutter analyze --no-pub
 - 另一窗口更新布局只提示，不自动覆盖当前操作；可手动载入或保留当前布局。损坏、未知版本或存储受限时不覆盖旧数据，并显示告警。
 
 实现与验收见 [自由画布验证记录](docs/自由画布验证记录.md)。组件树、组件配色详情仍留待后续设计。
+
+## 自动发现和流程录制
+
+自动模式使用独立的 `discovery` 配置与产物目录。启动上文的 Flutter Web 示例后，在 Atlas 根目录执行：
+
+```sh
+rtk proxy pnpm atlas capture --config examples/atlas-discovery.mjs
+rtk proxy pnpm atlas record --config examples/atlas-discovery.mjs
+rtk proxy pnpm atlas record --config examples/atlas-discovery.mjs --journeys
+rtk proxy pnpm atlas view --config examples/atlas-discovery.mjs
+```
+
+手动录制从应用入口打开隔离 Chrome，操作完成后在终端按回车。普通路由候选由项目适配器从已有定义派生。Atlas 对实际到达、内容就绪的页面截图，对已确认的真实操作生成连线。新候选和缺少复现数据的候选显示为「待采集」。独立画布实时预览需要应用服务继续运行。
