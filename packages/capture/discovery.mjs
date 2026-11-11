@@ -1,8 +1,9 @@
 import {createHash} from 'node:crypto';
-import {mkdir, readFile, rm, rmdir} from 'node:fs/promises';
+import {readFile, rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createInterface} from 'node:readline/promises';
 import {createBatch, errorMessage, publishBatch, validateCatalog} from './index.mjs';
+import {acquireOutputLock} from './lock.mjs';
 
 const sameViewport = (a, b) => a?.width === b.width && a?.height === b.height;
 const delay = ms => new Promise(done => setTimeout(done, ms));
@@ -101,20 +102,35 @@ async function manualJourney(session, watch, waitForStop) {
   }
 }
 
+/**
+ * @param {{discovery: any, launchBrowser: any, output: string, publicPath?: string,
+ *   viewport: any, mode?: string, waitForStop?: (session: any) => Promise<void>}} options
+ */
 export async function runDiscovery({discovery, launchBrowser, output, publicPath, viewport, mode, waitForStop = waitForEnter}) {
-  await mkdir(output, {recursive: true});
-  const lock = resolve(output, '.atlas-discovery-lock');
-  try {
-    await mkdir(lock);
-  } catch (error) {
-    if (error.code === 'EEXIST') throw Error('自动图谱已有写入任务，请等待该任务结束');
-    throw error;
-  }
+  const release = await acquireOutputLock(output);
   try {
     return await runBatch({discovery, launchBrowser, output, publicPath, viewport, mode, waitForStop});
   } finally {
-    await rmdir(lock);
+    await release();
   }
+}
+
+/**
+ * 失败批次用已收集的节点状态填充归档，failedScreens/failedEdges 按「未能确认」统计（诊断本批断在哪）；
+ * 成功批次沿用 try 内已填充并通过 validateCatalog 的结果，仅统计显式 failed（与 capture() 口径对称）。
+ */
+export function finalizeArchive({result, nodes, edges, failed}) {
+  const screens = failed ? [...nodes.values()] : (result?.screens ?? []);
+  const archivedEdges = failed ? [...edges.values()] : (result?.edges ?? []);
+  return {
+    result: {...(result ?? {}), screens, edges: archivedEdges},
+    failedScreens: failed
+      ? screens.filter(screen => screen?.status !== 'captured').length
+      : screens.filter(screen => screen?.status === 'failed').length,
+    failedEdges: failed
+      ? archivedEdges.filter(edge => edge?.status !== 'observed').length
+      : archivedEdges.filter(edge => edge?.status === 'failed').length,
+  };
 }
 
 async function runBatch({discovery, launchBrowser, output, publicPath, viewport, mode, waitForStop}) {
@@ -123,6 +139,9 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
   let browser;
   let result;
   let failure;
+  // 提升到 try 之外：失败路径也要用已收集的节点状态归档诊断信息（见 finalizeArchive）。
+  const nodes = new Map();
+  const edges = new Map();
   try {
     const {sourceFingerprint, candidates, open, journeys} = discovery;
     const metadata = {theme: '默认主题', scenarioId: 'default', seedVersion: '1',
@@ -138,8 +157,10 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
     const compatible = Boolean(fingerprint && previous?.discovery && previous.sourceFingerprint === fingerprint &&
       sameViewport(previous.viewport, viewport) && previous.scenarioId === metadata?.scenarioId &&
       previous.seedVersion === metadata?.seedVersion && previous.theme === metadata?.theme);
-    const nodes = new Map(compatible ? previous.screens.map(screen => [screen.id, screen]) : []);
-    const edges = new Map(compatible ? previous.edges.map(edge => [edge.id, edge]) : []);
+    if (compatible) {
+      for (const screen of previous.screens) nodes.set(screen.id, screen);
+      for (const edge of previous.edges) edges.set(edge.id, edge);
+    }
     const diagnostics = [];
     for (const {direct, ...screen} of declared) {
       if (!nodes.has(screen.id)) nodes.set(screen.id, {...screen, status: 'pending', error: '等待真实页面就绪'});
@@ -251,12 +272,14 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
   } finally {
     await browser?.close().catch(error => { failure ??= error; });
   }
+  const archive = finalizeArchive({result, nodes, edges, failed: Boolean(failure)});
   const attempt = {
     captureId, completedAt: new Date().toISOString(), status: failure ? 'failed' : 'passed',
-    failedScreens: 0, failedEdges: 0, stage: failure ? mode : 'complete',
+    failedScreens: archive.failedScreens, failedEdges: archive.failedEdges,
+    stage: failure ? mode : 'complete',
     error: failure ? errorMessage(failure) : null, report: artifact('attempt.json'),
   };
-  await publishBatch({output, directory, captureId, result, attempt});
+  await publishBatch({output, directory, captureId, result: archive.result, attempt});
   if (failure) throw failure;
   return result;
 }

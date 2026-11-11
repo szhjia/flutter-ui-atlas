@@ -12,11 +12,14 @@
     "skipLibCheck": true,
     "noEmit": true,
     "types": [
-      "vite/client"
-    ]
+      "vite/client",
+      "node"
+    ],
+    "allowJs": true
   },
   "include": [
     "src",
-    "packages/viewer/src", "packages/capture/adapter.ts"
+    "packages/viewer/src", "packages/capture/adapter.ts",
+    "tests/canvas", "tests/browser"
   ]
 }

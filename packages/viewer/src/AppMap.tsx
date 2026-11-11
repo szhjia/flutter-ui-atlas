@@ -79,7 +79,7 @@ function AttemptNotice({attempt, hasMap}: {attempt: CaptureAttempt | null; hasMa
 
 type CoverageView = 'flow' | 'unlinked' | 'all';
 
-function MapCanvas({map, attempt, refresh, adapter}: {map: AppMapManifest; attempt: CaptureAttempt | null; refresh: ()=>void; adapter: ViewerPresentation}) {
+function MapCanvas({map, attempt, loadError, refresh, adapter}: {map: AppMapManifest; attempt: CaptureAttempt | null; loadError: string; refresh: ()=>void; adapter: ViewerPresentation}) {
   const groupOrder = useMemo(()=>[...new Set(map.screens.map(s=>s.group))],[map]);
   const roles = useMemo(()=>[...new Set(map.screens.map(s=>s.role))],[map]);
   const compare = (a:MapScreen,b:MapScreen)=>roles.indexOf(a.role)-roles.indexOf(b.role)||groupOrder.indexOf(a.group)-groupOrder.indexOf(b.group);
@@ -156,6 +156,7 @@ function MapCanvas({map, attempt, refresh, adapter}: {map: AppMapManifest; attem
   }}>
     <ShellHeader presentation={adapter} map={map} refresh={refresh}/>
     <AttemptNotice attempt={attempt} hasMap/>
+    {loadError && <div className="atlas-notice" role="alert">读取采集结果失败，当前显示上一次成功结果。{loadError.split('\n', 1)[0]} <button onClick={refresh}>重试</button></div>}
     <div className="map-toolbar">
       <div className="map-segment" aria-label="身份筛选">{['全部',...roles.filter(r=>!adapter.sharedRoles?.includes(r))].map(item=><button key={item} aria-pressed={role===item} onClick={()=>resetFilters(item,group,query)}>{item==='全部'?'全部身份':`${item}空间`}</button>)}</div>
       <select aria-label="功能分组" value={group} onChange={e=>resetFilters(role,e.target.value,query)}><option value="全部">全部功能</option>{groupOrder.map(g=><option key={g}>{g}</option>)}</select>
@@ -173,7 +174,7 @@ function MapCanvas({map, attempt, refresh, adapter}: {map: AppMapManifest; attem
       <CanvasToolbar canUndo={controller.canUndo} canRedo={controller.canRedo} undo={controller.undo} redo={controller.redo} arrange={controller.arrangeVisible} count={geometry.filter(n=>!n.hidden&&!n.locked).length} locked={geometry.find(n=>n.id===selectedId)?.locked} onLock={selectedId?()=>controller.toggleLock(selectedId):undefined}/>
       <button onClick={()=>void flow.fitView({padding:.08,duration:300,minZoom:.08,maxZoom:.8})}>查看全貌</button>
     </div>
-    {(controller.issue||controller.externalAvailable||controller.pendingIds.length>0||controller.conflictIds.length>0)&&<div className="atlas-notice" role="status">{controller.issue} {controller.conflictIds.length>0&&`有 ${controller.conflictIds.length} 个页面尺寸变化后间距不足，请手动移动或整理。`}{controller.externalAvailable&&<><span>另一窗口已更新布局。</span><button onClick={controller.loadExternalLayout}>载入外部布局</button><button onClick={controller.keepLocalLayout}>保留当前布局</button></>}{controller.pendingIds.map(id=><span key={id}>待定位：{map.screens.find(s=>s.id===id)?.title}<button onClick={()=>controller.toggleLock(id)}>解锁并定位</button></span>)}</div>}
+    {(controller.issue||controller.externalAvailable||controller.pendingIds.length>0||controller.conflictIds.length>0)&&<div className="atlas-notice" role="status">{controller.issue} {controller.corrupted&&<button onClick={controller.discardCorruptedLayout}>丢弃损坏布局</button>}{controller.conflictIds.length>0&&`有 ${controller.conflictIds.length} 个页面尺寸变化后间距不足，请手动移动或整理。`}{controller.externalAvailable&&<><span>另一窗口已更新布局。</span><button onClick={controller.loadExternalLayout}>载入外部布局</button><button onClick={controller.keepLocalLayout}>保留当前布局</button></>}{controller.pendingIds.map(id=><span key={id}>待定位：{map.screens.find(s=>s.id===id)?.title}<button onClick={()=>controller.toggleLock(id)}>解锁并定位</button></span>)}</div>}
     <div className="map-main">
       <section className="map-stage" aria-label="页面关系画布">
         <ReactFlow<ScreenNode> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={.08} maxZoom={1.8}
@@ -251,7 +252,11 @@ export default function AppMap({adapter, config}: AtlasViewerProps) {
     setSnapshot(previous => previous.error ? {...previous, error: ''} : previous);
     const pending = adapter ? readAdapterSnapshot(adapter) : readViewerSnapshot(config);
     void pending.then(snapshot => {
-      if (request === revision.current) setSnapshot(snapshot);
+      if (request !== revision.current) return;
+      // 失败不降级：仍无好状态才进入错误态；已有画布则保留并叠加诊断。
+      setSnapshot(previous => snapshot.map
+        ? snapshot
+        : {...previous, attempt: snapshot.attempt ?? previous.attempt, error: snapshot.error || '读取采集结果失败'});
     });
   }, [adapter, config]);
   useEffect(() => {
@@ -272,6 +277,6 @@ export default function AppMap({adapter, config}: AtlasViewerProps) {
   </main>;
 
   return <ReactFlowProvider>
-    <MapCanvas map={map} attempt={attempt?.captureId === map.captureId ? null : attempt} refresh={load} adapter={presentation}/>
+    <MapCanvas map={map} attempt={attempt?.captureId === map.captureId ? null : attempt} loadError={error} refresh={load} adapter={presentation}/>
   </ReactFlowProvider>;
 }

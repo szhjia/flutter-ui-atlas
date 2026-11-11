@@ -16,29 +16,31 @@ test('自动采集保留未知候选，手动与测试录制合并同 URL 的真
     newContext: browser.newContext.bind(browser),
     close: async () => {},
   });
+  const openSession = async ({viewport: size}: {viewport: typeof viewport}) => {
+    const context = await browser.newContext({viewport: size});
+    const page = await context.newPage();
+    await page.route(start, route => route.fulfill({
+      contentType: 'text/html; charset=utf-8',
+      body: '<h1>访客</h1><flt-semantics role="button" tabindex="0">登录</flt-semantics><script>document.querySelector("flt-semantics").onclick=()=>{setTimeout(()=>{document.querySelector("h1").textContent="家长"},180)}</script>',
+    }));
+    await page.goto(start);
+    return {page, errors: [], acceptsUrl: (url: string) => url === start,
+      close: () => context.close(),
+      async observe() {
+        if (await page.getByRole('heading', {name: '家长'}).isVisible()) return second;
+        return await page.getByRole('heading', {name: '访客'}).isVisible() ? first : null;
+      },
+    };
+  };
+  type DiscoverySession = Awaited<ReturnType<typeof openSession>>;
   const discovery = {
     sourceFingerprint: async () => 'same-source',
     candidates: async () => [{...first, direct: true}, second, {...pending, direct: true}],
-    async open({viewport: size}: {viewport: typeof viewport}) {
-      const context = await browser.newContext({viewport: size});
-      const page = await context.newPage();
-      await page.route(start, route => route.fulfill({
-        contentType: 'text/html; charset=utf-8',
-        body: '<h1>访客</h1><flt-semantics role="button" tabindex="0">登录</flt-semantics><script>document.querySelector("flt-semantics").onclick=()=>{setTimeout(()=>{document.querySelector("h1").textContent="家长"},180)}</script>',
-      }));
-      await page.goto(start);
-      return {page, errors: [], acceptsUrl: (url: string) => url === start,
-        close: () => context.close(),
-        async observe() {
-          if (await page.getByRole('heading', {name: '家长'}).isVisible()) return second;
-          return await page.getByRole('heading', {name: '访客'}).isVisible() ? first : null;
-        },
-      };
-    },
-    async journeys({watch}: {watch: (session: Awaited<ReturnType<typeof discovery.open>>) => Promise<{
+    open: openSession,
+    async journeys({watch}: {watch: (session: DiscoverySession) => Promise<{
       step(action: string, perform: () => Promise<void>): Promise<void>;
     }>}) {
-      const session = await discovery.open({viewport});
+      const session = await openSession({viewport});
       try {
         const observer = await watch(session);
         await observer.step('登录', () => session.page.getByRole('button', {name: '登录'}).click());
@@ -53,7 +55,7 @@ test('自动采集保留未知候选，手动与测试录制合并同 URL 的真
     const captured = await runDiscovery({...config, mode: 'capture'});
     expect(captured.screens.find((page: {id: string}) => page.id === pending.id)).toMatchObject({status: 'pending'});
     expect(captured.edges).toEqual([]);
-    const manual = await runDiscovery({...config, mode: 'manual', waitForStop: async (session: Awaited<ReturnType<typeof discovery.open>>) => {
+    const manual = await runDiscovery({...config, mode: 'manual', waitForStop: async (session: DiscoverySession) => {
       await session.page.getByRole('button', {name: '登录'}).click();
       await expect(session.page.getByRole('heading', {name: '家长'})).toBeVisible();
     }});
@@ -66,6 +68,12 @@ test('自动采集保留未知候选，手动与测试录制合并同 URL 的真
       throw Error('流程断言失败');
     }}})).rejects.toThrow('流程断言失败');
     expect(await readFile(join(output, 'manifest.json'), 'utf8')).toBe(before);
+    const attempt = JSON.parse(await readFile(join(output, 'latest-attempt.json'), 'utf8'));
+    expect(attempt.status).toBe('failed');
+    expect(attempt.failedScreens).toBe(1);
+    const batch = JSON.parse(await readFile(join(output, attempt.captureId, 'manifest.json'), 'utf8'));
+    expect(batch.screens).toHaveLength(3);
+    expect(batch.screens.find((page: {id: string}) => page.id === pending.id)).toMatchObject({status: 'pending'});
     const next = await runDiscovery({...config, mode: 'capture', discovery: {...discovery, sourceFingerprint: async () => 'different'}});
     expect(next.edges).toEqual([]);
     expect(next.screens.find((page: {id: string}) => page.id === second.id)).toMatchObject({status: 'pending'});

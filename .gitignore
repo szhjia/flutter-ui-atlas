@@ -64,3 +64,9 @@ public/generated/
 .superpowers/
 **/.atlas/generated/
 **/.atlas/discovery/
+
+# 本机 agent 工具状态目录
+.mimosa/
+.v2c/
+.video_agent/
+.zcode/

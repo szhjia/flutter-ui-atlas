@@ -1,6 +1,7 @@
 import {mkdir, writeFile, rename, rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {stripVTControlCharacters} from 'node:util';
+import {acquireOutputLock} from './lock.mjs';
 
 export function validateCatalog({screens, edges}) {
   if (!Array.isArray(screens) || !Array.isArray(edges) || !screens.length) throw Error('目录不能为空');
@@ -58,8 +59,18 @@ async function assertState(session, screen) {
   if (!await session.matchesState(screen)) throw Error(`页面状态不匹配: ${screen.id}`);
 }
 
+/** 输出目录写入互斥：整个批次（createBatch → publishBatch）持锁，与 runDiscovery 共用（见协议「输出目录写入互斥」）。 */
+export async function capture(options) {
+  const release = await acquireOutputLock(options.output);
+  try {
+    return await runCaptureBatch(options);
+  } finally {
+    await release();
+  }
+}
+
 /** 直接传入 browser 时由调用者管理生命周期，传入 launchBrowser 时由本批采集管理。 */
-export async function capture({
+async function runCaptureBatch({
   adapter, browser, launchBrowser, output, publicPath = '/generated',
   viewport = {width: 393, height: 852}, requireObservedEdges = false,
 }) {

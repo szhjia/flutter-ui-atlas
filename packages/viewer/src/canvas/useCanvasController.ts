@@ -5,13 +5,13 @@ import {solveDrag} from './solve-drag';
 import {arrangeNodes} from './arrange';
 import {reconcileLayout} from './reconcile';
 import {commitLayout,undoLayout,redoLayout} from './layout-state';
-import {readLayout,writeLayout,storageKey} from './layout-storage';
+import {readLayout,writeLayout,discardLayout,storageKey} from './layout-storage';
 
 export function isEditingTarget(target:EventTarget|null){return target instanceof Element&&!!target.closest('input,textarea,select,iframe,[contenteditable=true]');}
 export function useCanvasController({map,layoutKey='',visibleIds}:{map:AppMapManifest;layoutKey?:string;visibleIds:Set<string>}){
  const sizes=useRef<Record<string,Size>>({});
  const shape=()=>map.screens.map(s=>({id:s.id,x:0,y:0,locked:false,hidden:!visibleIds.has(s.id),...(sizes.current[s.id]??{width:224,height:528})}));
- const read=()=>{try{return readLayout(window.localStorage,layoutKey);}catch{return {document:null,issue:'布局未保存：浏览器存储不可用',writable:false};}};
+ const read=()=>{try{return readLayout(window.localStorage,layoutKey);}catch{return {document:null,issue:'布局未保存：浏览器存储不可用',writable:false,corrupted:false};}};
  const initial=useRef<ReturnType<typeof read>|null>(null);if(!initial.current)initial.current=read();
  const initialLayout=useRef<ReturnType<typeof reconcileLayout>|null>(null);if(!initialLayout.current)initialLayout.current=reconcileLayout(initial.current.document,shape(),map.edges);
  const [history,setHistory]=useState<LayoutHistory>(()=>({present:initialLayout.current!.document,past:[],future:[]}));
@@ -19,6 +19,7 @@ export function useCanvasController({map,layoutKey='',visibleIds}:{map:AppMapMan
  const [preview,setPreview]=useState<CanvasNode[]|null>(null);
  const [pendingIds,setPending]=useState<string[]>(initialLayout.current.pendingIds),pending=useRef<string[]>(initialLayout.current.pendingIds);
  const [conflictIds,setConflicts]=useState<string[]>(initialLayout.current.conflictIds),[issue,setIssue]=useState(initial.current.issue);
+ const [corrupted,setCorrupted]=useState(initial.current.corrupted);
  const [externalAvailable,setExternal]=useState(false),external=useRef(false);
  const [draggingId,setDragging]=useState<string|null>(null);
  const gesture=useRef<{id:string;start:CanvasNode[]}|null>(null),frame=useRef(0),target=useRef<Point|null>(null);
@@ -29,8 +30,9 @@ export function useCanvasController({map,layoutKey='',visibleIds}:{map:AppMapMan
  const cancelDrag=()=>{if(frame.current)cancelAnimationFrame(frame.current);frame.current=0;gesture.current=null;target.current=null;setPreview(null);setDragging(null);};
  const reconcile=(d:LayoutDocument|null,ids?:Set<string>)=>{const currentIds=ids?new Set([...ids].filter(id=>!pending.current.includes(id))):ids;const r=reconcileLayout(d,shape(),map.edges,currentIds);pending.current=r.pendingIds;setPending(r.pendingIds);setConflicts(r.conflictIds);return r.document;};
  useEffect(()=>{if(context.current.map===map&&context.current.key===layoutKey)return;cancelDrag();const keyChanged=context.current.key!==layoutKey;
-  if(keyChanged){external.current=false;setExternal(false);setIssue(read().issue);}
-  const d=reconcile(keyChanged?read().document:current.current.present,keyChanged?undefined:previous.current);
+  let fresh: ReturnType<typeof read> | null = null;
+  if(keyChanged){external.current=false;setExternal(false);fresh=read();setIssue(fresh.issue);setCorrupted(fresh.corrupted);}
+  const d=reconcile(fresh?fresh.document:current.current.present,fresh?undefined:previous.current);
   previous.current=new Set(map.screens.map(s=>s.id));context.current={map,key:layoutKey};install({present:d,past:[],future:[]});
  },[map,layoutKey]);
  useEffect(()=>{save(current.current.present);},[]);
@@ -47,7 +49,11 @@ export function useCanvasController({map,layoutKey='',visibleIds}:{map:AppMapMan
  const arrangeVisible=()=>{cancelDrag();const r=arrangeNodes(nodesFor(current.current.present),map.edges,visibleIds);if(r.ok)commitNodes(r.nodes);else setIssue('没有足够空间整理，布局未更改');};
  const loadExternalLayout=()=>{cancelDrag();const value=read();if(!value.document){setIssue(value.issue??'外部布局已删除；当前布局仍保留');return;}external.current=false;setExternal(false);setIssue(value.issue);install({present:reconcile(value.document,previous.current),past:[],future:[]},false);};
  const keepLocalLayout=()=>{external.current=false;setExternal(false);save(current.current.present);};
+ const discardCorruptedLayout=()=>{cancelDrag();const check=read();
+  // 丢弃前重读：另一窗口可能已把存储修复为合法布局，此时不删数据，转回外部布局选择（置外部可用，让文案承诺的按钮真实出现）。
+  if(check.document){setCorrupted(false);external.current=true;setExternal(true);setIssue('布局数据已可读：请载入外部布局或保留当前布局。');return;}
+  const discarded=discardLayout(localStorage,layoutKey);if(!discarded.ok){setIssue(discarded.issue);return;}const fresh=read();setCorrupted(fresh.corrupted);external.current=false;setExternal(false);install({present:reconcile(null),past:[],future:[]});setIssue(fresh.issue);};
  const onViewportCommit=(viewport:Viewport)=>{const h={...current.current,present:{...current.current.present,viewport}};install(h);};
  const onMeasured=(measurements:{id:string;size:Size}[])=>{let changed=false;for(const {id,size}of measurements){const old=sizes.current[id];if(size.width>0&&size.height>0&&(!old||old.width!==size.width||old.height!==size.height)){sizes.current[id]=size;changed=true;}}if(changed){cancelDrag();install({...current.current,present:reconcile(current.current.present,previous.current)},false);}};
- return {nodes:(context.current.map===map&&context.current.key===layoutKey?preview:null)??nodesFor(history.present),viewport:history.present.viewport,pendingIds,conflictIds,issue,externalAvailable,draggingId,canUndo:!!history.past.length,canRedo:!!history.future.length,onDragStart,onDrag,onDragStop,cancelDrag,moveByKeyboard,toggleLock,undo,redo,arrangeVisible,loadExternalLayout,keepLocalLayout,onViewportCommit,onMeasured};
+ return {nodes:(context.current.map===map&&context.current.key===layoutKey?preview:null)??nodesFor(history.present),viewport:history.present.viewport,pendingIds,conflictIds,issue,corrupted,externalAvailable,draggingId,canUndo:!!history.past.length,canRedo:!!history.future.length,onDragStart,onDrag,onDragStop,cancelDrag,moveByKeyboard,toggleLock,undo,redo,arrangeVisible,loadExternalLayout,keepLocalLayout,discardCorruptedLayout,onViewportCommit,onMeasured};
 }

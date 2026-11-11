@@ -1,13 +1,18 @@
 import {createRoot} from 'react-dom/client';
-import AppMap, {type AtlasViewerConfig} from '../packages/viewer/src/AppMap';
+import AppMap from '../packages/viewer/src/AppMap';
+import {parseEntryConfig} from './entry-config';
 
-const configuration = document.getElementById('atlas-config')?.textContent;
-const config: AtlasViewerConfig = configuration ? JSON.parse(configuration) : {
-  artifactPaths: ['/generated'],
-  shell: {title: 'Flutter UI Atlas'},
-  layoutKey: 'atlas-example:phone-393x852:v1',
-  captureHint: 'atlas build --config <配置文件>',
-  preview: {routeMode: 'hash', localOnly: true},
-};
+const {config, error} = parseEntryConfig(document.getElementById('atlas-config')?.textContent);
+const root = document.getElementById('root')!;
 
-createRoot(document.getElementById('root')!).render(<AppMap config={config}/>);
+// 失败不降级：配置解析失败从未有过好状态，进入错误态但给出可行动诊断，不白屏。
+if (error || !config) {
+  createRoot(root).render(<main className="app-map">
+    <section className="map-empty" aria-label="画布配置">
+      <p role="alert">{error}</p>
+      <p><button onClick={() => location.reload()}>重新加载</button></p>
+    </section>
+  </main>);
+} else {
+  createRoot(root).render(<AppMap config={config}/>);
+}

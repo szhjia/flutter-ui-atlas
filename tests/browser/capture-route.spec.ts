@@ -35,7 +35,7 @@ async function collect(browser: Browser, click: string) {
 
 test('相同 hash 与标题的错误入口不能通过采集验证', async ({browser}) => {
   const result = await collect(browser, 'location.href="/wrong.html#/detail"');
-  expect(result.screens.every(screen => screen.status==='captured')).toBe(true);
+  expect(result.screens.every((screen: {status: string}) => screen.status==='captured')).toBe(true);
   expect(result.edges[0].status).toBe('failed');
   expect(result.edges[0].reason).toContain('/wrong.html#/detail');
 });
