@@ -57,6 +57,11 @@ export function useCanvasController({
   const [conflictIds, setConflicts] = useState<string[]>(initialLayout.current.conflictIds),
     [issue, setIssue] = useState(initial.current.issue);
   const [corrupted, setCorrupted] = useState(initial.current.corrupted);
+  const readCurrentLayout = () => {
+    const value = read();
+    setCorrupted(value.corrupted);
+    return value;
+  };
   const [externalAvailable, setExternal] = useState(false),
     external = useRef(false);
   const [draggingId, setDragging] = useState<string | null>(null);
@@ -75,8 +80,11 @@ export function useCanvasController({
       return;
     }
     try {
-      setIssue(writeLayout(localStorage, layoutKey, d).issue);
+      const result = writeLayout(localStorage, layoutKey, d);
+      readCurrentLayout();
+      setIssue(result.issue);
     } catch {
+      readCurrentLayout();
       setIssue('布局未保存：浏览器存储不可用');
     }
   };
@@ -109,9 +117,8 @@ export function useCanvasController({
     if (keyChanged) {
       external.current = false;
       setExternal(false);
-      fresh = read();
+      fresh = readCurrentLayout();
       setIssue(fresh.issue);
-      setCorrupted(fresh.corrupted);
     }
     const d = reconcile(fresh ? fresh.document : current.current.present, fresh ? undefined : previous.current);
     previous.current = new Set(map.screens.map(s => s.id));
@@ -212,7 +219,7 @@ export function useCanvasController({
   };
   const loadExternalLayout = () => {
     cancelDrag();
-    const value = read();
+    const value = readCurrentLayout();
     if (!value.document) {
       setIssue(value.issue ?? '外部布局已删除；当前布局仍保留');
       return;
@@ -229,7 +236,7 @@ export function useCanvasController({
   };
   const discardCorruptedLayout = () => {
     cancelDrag();
-    const check = read();
+    const check = readCurrentLayout();
     // 丢弃前重读：另一窗口可能已把存储修复为合法布局，此时不删数据，转回外部布局选择（置外部可用，让文案承诺的按钮真实出现）。
     if (check.document) {
       setCorrupted(false);
@@ -238,17 +245,21 @@ export function useCanvasController({
       setIssue('布局数据已可读：请载入外部布局或保留当前布局。');
       return;
     }
+    if (!check.writable && !check.corrupted) {
+      setIssue(check.issue);
+      return;
+    }
     const discarded = discardLayout(localStorage, layoutKey);
     if (!discarded.ok) {
       setIssue(discarded.issue);
       return;
     }
-    const fresh = read();
-    setCorrupted(fresh.corrupted);
+    const fresh = readCurrentLayout();
     external.current = false;
     setExternal(false);
-    install({present: reconcile(null), past: [], future: []});
     setIssue(fresh.issue);
+    // 保存结果是最终诊断，不能再用删除后的读取结果把写入错误清掉。
+    install({present: reconcile(null), past: [], future: []});
   };
   const onViewportCommit = (viewport: Viewport) => {
     const h = {...current.current, present: {...current.current.present, viewport}};

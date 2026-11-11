@@ -53,12 +53,13 @@ export function declarativeConfig(config, configDirectory) {
     // URL 规范化会解码 %2e 等形态并折叠点段，点段检查须在解码后的值上进行。
     let decodedPrefix = config.routePrefix;
     if (typeof config.routePrefix === 'string') {
-      try { decodedPrefix = decodeURIComponent(config.routePrefix); } catch { /* 保留原值，交给后续校验拒绝 */ }
+      try { decodedPrefix = decodeURIComponent(config.routePrefix); }
+      catch { throw Error('routePrefix 包含无效的 URL 编码'); }
     }
     if (typeof config.routePrefix !== 'string' || !/^\/(?!\/)[^?#]*$/.test(config.routePrefix) ||
         config.routePrefix.endsWith('/') || /(?:^|\/)\.{1,2}(?:\/|$)/.test(decodedPrefix) ||
-        /[\u0000-\u001f]/.test(config.routePrefix)) {
-      throw Error('routePrefix 必须是以 / 开头且不以 / 结尾、不含点段与控制字符的路径前缀');
+        /[\\\u0000-\u001f\u007f]/.test(decodedPrefix)) {
+      throw Error('routePrefix 必须是以 / 开头且不以 / 结尾、不含点段、反斜杠与控制字符的路径前缀');
     }
     routePrefix = config.routePrefix;
   }
@@ -77,7 +78,14 @@ export function declarativeConfig(config, configDirectory) {
     const url = webUrl(spec.entry ?? base.href, base);
     if (url.origin !== base.origin) throw Error(`页面 ${spec.id} 的入口必须与 baseUrl 同源`);
     if (mode === 'hash') url.hash = spec.route;
-    else url.pathname = routePrefix + spec.route;
+    else {
+      url.pathname = routePrefix + spec.route;
+      const prefixPath = new URL(base);
+      prefixPath.pathname = routePrefix + '/';
+      if (routePrefix && !url.pathname.startsWith(prefixPath.pathname)) {
+        throw Error(`页面 ${spec.id} 的 route 规范化后离开 routePrefix 目录`);
+      }
+    }
     return {
       ...spec, route: routeOf(url), entry: url.href,
       role: spec.role ?? '默认', group: spec.group ?? '页面', state: spec.state ?? '默认状态',

@@ -264,20 +264,28 @@ export default function AppMap({adapter, config}: AtlasViewerProps) {
     };
   }, [adapter, config]);
 
-  const [{map, attempt, error}, setSnapshot] = useState(emptySnapshot);
+  // 配置的外壳重建不是换源；适配器方法还依赖接收者，不能只比较函数引用。
+  const artifactSource = config ? JSON.stringify(config.artifactPaths) : undefined;
+  const source = useMemo(() => ({}), [artifactSource, config?.layoutKey, adapter, adapter?.loadManifest, adapter?.layoutKey]);
+  const [loaded, setLoaded] = useState(() => ({source, snapshot: emptySnapshot}));
+  // 在 effect 发出新请求前就隐藏旧图，避免旧节点写入新 layoutKey。
+  const {map, attempt, error} = loaded.source === source ? loaded.snapshot : emptySnapshot;
   const revision = useRef(0);
   const load = useCallback(() => {
     const request = ++revision.current;
-    setSnapshot(previous => previous.error ? {...previous, error: ''} : previous);
+    setLoaded(previous => ({source, snapshot: previous.source === source
+      ? {...previous.snapshot, error: ''} : emptySnapshot}));
     const pending = adapter ? readAdapterSnapshot(adapter) : readViewerSnapshot(config);
     void pending.then(snapshot => {
       if (request !== revision.current) return;
-      // 失败不降级：仍无好状态才进入错误态；已有画布则保留并叠加诊断。
-      setSnapshot(previous => snapshot.map
-        ? snapshot
-        : {...previous, attempt: snapshot.attempt ?? previous.attempt, error: snapshot.error || '读取采集结果失败'});
+      setLoaded(previous => {
+        const before = previous.source === source ? previous.snapshot : emptySnapshot;
+        return {source, snapshot: snapshot.map ? snapshot : {
+          ...before, attempt: snapshot.attempt ?? before.attempt, error: snapshot.error || '读取采集结果失败'
+        }};
+      });
     });
-  }, [adapter, config]);
+  }, [adapter, config, source]);
   useEffect(() => {
     load();
     return () => { revision.current++; };

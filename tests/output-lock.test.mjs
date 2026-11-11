@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
-import {mkdir, readFile, rm, utimes} from 'node:fs/promises';
+import {fork, spawnSync} from 'node:child_process';
+import {once, on} from 'node:events';
+import {mkdir, readFile, rm, utimes, writeFile} from 'node:fs/promises';
 import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -145,4 +146,98 @@ test('集成：陈旧锁自动接管后 runDiscovery 走完批次并释放锁', 
   );
   const takenAgain = await acquireOutputLock(dir);
   await takenAgain();
+});
+
+function worker(t, dir, resumeFile = '') {
+  const child = fork(new URL('./fixtures/output-lock-worker.mjs', import.meta.url), [dir, resumeFile], {silent: true});
+  child.stdout.resume();
+  child.stderr.resume();
+  t.after(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  });
+  return child;
+}
+
+async function outcome(child) {
+  for await (const [message] of on(child, 'message')) {
+    if (message.event === 'acquired' || message.event === 'denied') return message;
+  }
+}
+
+test('两个真实进程接管同一陈旧锁时，检查与新持有者登记不可交错', {timeout: 15_000}, async t => {
+  const dir = await output();
+  const resume = join(dir, 'resume');
+  await mkdir(lockPath(dir));
+  await writeFile(join(lockPath(dir), 'meta.json'), JSON.stringify({pid: deadPid()}));
+  const first = worker(t, dir, resume);
+  const firstOutcome = outcome(first);
+  assert.equal((await once(first, 'message'))[0].event, 'warning');
+  // 第一个进程停在陈旧判定之后；第二个进程必须不能趁机取得锁。
+  const second = worker(t, dir);
+  const secondOutcome = await outcome(second);
+  await writeFile(resume, '');
+  assert.equal((await firstOutcome).event, 'acquired');
+  assert.equal(secondOutcome.event, 'denied');
+  assert.match(secondOutcome.message, /锁|互斥门/);
+  const closed = once(first, 'exit');
+  first.send('release');
+  assert.equal((await closed)[0], 0);
+  await assert.rejects(readFile(join(lockPath(dir), 'meta.json')), {code: 'ENOENT'});
+});
+
+test('无锁目录的跨进程竞争也只有一个持有者', {timeout: 10_000}, async t => {
+  const dir = await output();
+  const children = [worker(t, dir), worker(t, dir)];
+  const results = await Promise.all(children.map(outcome));
+  assert.equal(results.filter(result => result.event === 'acquired').length, 1);
+  const winner = children[results.findIndex(result => result.event === 'acquired')];
+  const closed = once(winner, 'exit');
+  winner.send('release');
+  assert.equal((await closed)[0], 0);
+});
+
+test('锁修改中进程崩溃时保留互斥门并提供人工恢复路径，清理后可以接管', {timeout: 10_000}, async t => {
+  const dir = await output();
+  const guard = join(dir, '.atlas-lock-guard');
+  await mkdir(lockPath(dir));
+  await writeFile(join(lockPath(dir), 'meta.json'), JSON.stringify({pid: deadPid()}));
+  const child = worker(t, dir, join(dir, 'never-resume'));
+  await once(child, 'message');
+  const closed = once(child, 'exit');
+  child.kill('SIGKILL');
+  await closed;
+  await assert.rejects(acquireOutputLock(dir), error => {
+    assert.ok(error.message.includes(guard));
+    assert.match(error.message, /确认相关写入任务均已停止/);
+    return true;
+  });
+  await readFile(join(guard, 'meta.json'));
+  await rm(guard, {recursive: true});
+  const release = await acquireOutputLock(dir, {warn: () => {}});
+  await release();
+});
+
+test('release 不能删除同 PID 的新一代锁或身份不可读的锁', async () => {
+  for (const replacement of [JSON.stringify({pid: process.pid, token: 'new-owner'}), '{bad']) {
+    const dir = await output();
+    const release = await acquireOutputLock(dir);
+    const metaPath = join(lockPath(dir), 'meta.json');
+    await writeFile(metaPath, replacement);
+    await release();
+    assert.equal(await readFile(metaPath, 'utf8'), replacement);
+    await rm(lockPath(dir), {recursive: true});
+  }
+});
+
+test('release 遇到互斥门占用失败后可以重试，不永久缓存失败结果', async () => {
+  const dir = await output();
+  const release = await acquireOutputLock(dir);
+  const guard = join(dir, '.atlas-lock-guard');
+  await mkdir(guard);
+  await assert.rejects(release(), /互斥门/);
+  await rm(guard, {recursive: true});
+  await release();
+  await assert.rejects(readFile(join(lockPath(dir), 'meta.json')), {code: 'ENOENT'});
+  const next = await acquireOutputLock(dir);
+  await next();
 });
