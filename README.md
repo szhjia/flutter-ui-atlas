@@ -65,13 +65,13 @@ rtk proxy pnpm atlas view --config examples/atlas.config.json
 
 ## 接入其他 Flutter Web 应用
 
-复制示例 JSON 到项目自己的开发工具目录，配置 `baseUrl`、页面 ID、路由和能区分页面状态的可见内容。使用 `routeMode: "pathname"` 支持路径路由。需要复现的页面操作通过连线的 `click` 登记；省略时只展示声明关系。启动项目自身的 Web 服务，再运行 Atlas 两条命令。可从任意目录运行 `rtk proxy atlas build --config <配置绝对路径>`。
+复制示例 JSON 到项目自己的开发工具目录，配置 `baseUrl`、页面 ID、路由和能区分页面状态的可见内容。使用 `routeMode: "pathname"` 支持路径路由，子路径部署（如 `https://host/app/`）需加 `routePrefix: "/app"`；`baseUrl` 默认限回环地址，局域网或远程开发服务需设 `allowRemoteUrls: true`。需要复现的页面操作通过连线的 `click` 登记；省略时只展示声明关系。启动项目自身的 Web 服务，再运行 Atlas 两条命令。可从任意目录运行 `rtk proxy atlas build --config <配置绝对路径>`。
 
 登录、数据准备或自定义路由可使用可信本地 `.mjs` 配置。默认导出含 `adapter`、`output` 等设置的对象，选填 `previewUrls` 为按页面 ID 索引的 HTTP(S) 地址。没有地址时，独立画布仍支持截图和关系查看。适配接口、判据和配置字段见 [协议与适配接口](docs/协议与适配接口.md)。
 
-嵌入已有开发工作台时，宿主通过本地 `link:` 引用 `packages/viewer`，并在 Vite 配置中去重 React、React DOM 和 React Flow。向 `AtlasViewerAdapter` 提供结果加载，并按需提供预览地址、最近尝试、源码指纹和会话隔离能力。独立画布和嵌入方式都复用同一 manifest。
+嵌入已有开发工作台时，宿主通过本地 `link:` 引用 `packages/viewer`，并在 Vite 配置中去重 React、React DOM 和 React Flow。向 `AtlasViewerAdapter` 提供结果加载，并按需提供预览地址、最近尝试、源码指纹和会话隔离能力；配置助手（`createPreviewUrl`、`safeLink`、快照读取等）可从 `@flutter-ui-atlas/viewer/config` 导入。独立画布和嵌入方式都复用同一 manifest。
 
-需要 Flutter 内部导航事件时，在 `dev_dependencies` 引入 `packages/flutter_ui_atlas`，由独立 `main_atlas.dart` 组装 `AtlasNavigatorObserver` 或自定义 `AtlasNavigationAdapter`。业务应用的普通入口可以继续独立运行。
+需要 Flutter 内部导航事件时，在 `dev_dependencies` 引入 `packages/flutter_ui_atlas`，由独立 `main_atlas.dart` 组装 `AtlasNavigatorObserver`（SDK 当前唯一的公开接口）。业务应用的普通入口可以继续独立运行。
 
 ## 页面变化后怎样维护
 

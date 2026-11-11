@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
+import {assertLoopback} from './web-boundary.mjs';
 
 export function webUrl(value, base) {
   const url = new URL(value, base);
@@ -37,9 +38,30 @@ export function declarativeConfig(config, configDirectory) {
   if (typeof config.baseUrl !== 'string' || !Array.isArray(config.screens)) {
     throw Error('配置需要 baseUrl 和 screens');
   }
+  if (config.allowRemoteUrls !== undefined && typeof config.allowRemoteUrls !== 'boolean') {
+    throw Error('allowRemoteUrls 必须是布尔值');
+  }
   const base = webUrl(config.baseUrl);
+  assertLoopback(base, {
+    allowRemote: config.allowRemoteUrls === true,
+    message: 'baseUrl 必须是本地回环地址；如需采集局域网或远程开发服务，在配置中设置 allowRemoteUrls: true。',
+  });
   const mode = config.routeMode ?? 'hash';
   if (mode !== 'hash' && mode !== 'pathname') throw Error('routeMode 必须是 hash 或 pathname');
+  let routePrefix = '';
+  if (config.routePrefix !== undefined) {
+    // URL 规范化会解码 %2e 等形态并折叠点段，点段检查须在解码后的值上进行。
+    let decodedPrefix = config.routePrefix;
+    if (typeof config.routePrefix === 'string') {
+      try { decodedPrefix = decodeURIComponent(config.routePrefix); } catch { /* 保留原值，交给后续校验拒绝 */ }
+    }
+    if (typeof config.routePrefix !== 'string' || !/^\/(?!\/)[^?#]*$/.test(config.routePrefix) ||
+        config.routePrefix.endsWith('/') || /(?:^|\/)\.{1,2}(?:\/|$)/.test(decodedPrefix) ||
+        /[\u0000-\u001f]/.test(config.routePrefix)) {
+      throw Error('routePrefix 必须是以 / 开头且不以 / 结尾、不含点段与控制字符的路径前缀');
+    }
+    routePrefix = config.routePrefix;
+  }
   function routeOf(url) {
     return mode === 'hash' ? url.hash.slice(1).split('?')[0] || '/' : url.pathname;
   }
@@ -55,7 +77,7 @@ export function declarativeConfig(config, configDirectory) {
     const url = webUrl(spec.entry ?? base.href, base);
     if (url.origin !== base.origin) throw Error(`页面 ${spec.id} 的入口必须与 baseUrl 同源`);
     if (mode === 'hash') url.hash = spec.route;
-    else url.pathname = spec.route;
+    else url.pathname = routePrefix + spec.route;
     return {
       ...spec, route: routeOf(url), entry: url.href,
       role: spec.role ?? '默认', group: spec.group ?? '页面', state: spec.state ?? '默认状态',

@@ -1,31 +1,9 @@
 library;
 
-import 'dart:async';
 import 'package:flutter/widgets.dart';
 
-/// 由应用决定稳定状态 ID，避免同一路由的不同数据状态被合并。
-class AtlasLocation {
-  const AtlasLocation({required this.screenId, required this.route});
-  final String screenId;
-  final String route;
-}
-
-abstract interface class AtlasNavigationAdapter {
-  AtlasLocation get current;
-  Stream<AtlasLocation> get changes;
-  Future<void> open(String screenId);
-}
-
-abstract interface class AtlasScenarioProvider {
-  Future<void> prepare(String scenarioId);
-  Future<void> reset();
-}
-
-abstract interface class AtlasReadinessProbe {
-  Future<void> waitUntilReady(String screenId);
-}
-
 /// 监听命名 Navigator 页面。不会推测 IndexedStack、业务权限或动态样本。
+/// 这是 Dart SDK 当前的全部公开面；规划中的导航/场景/就绪接口见 lib/src/navigation.dart（未导出）。
 class AtlasNavigatorObserver extends NavigatorObserver {
   AtlasNavigatorObserver(this.onLocation);
   final ValueChanged<String> onLocation;

@@ -1,12 +1,14 @@
 import {webUrl} from '../capture/declarative.mjs';
+import {assertLoopback} from '../capture/web-boundary.mjs';
 
 const readyTimeout = 15000;
 
-export function localWebDiscovery(value, readyText) {
+/** entryMode 配置路径经 allowRemote 转发 allowRemoteUrls；--url 隐式路径保持严格回环。 */
+export function localWebDiscovery(value, readyText, {allowRemote = false, label = '--url'} = {}) {
   const address = webUrl(value);
-  if (!['127.0.0.1', 'localhost', '[::1]'].includes(address.hostname)) {
-    throw Error('--url 必须是本地 Flutter Web 开发服务的回环地址。');
-  }
+  assertLoopback(address, {allowRemote, message: label === '--url'
+    ? '--url 必须是本地 Flutter Web 开发服务的回环地址。'
+    : `${label} 必须是本地回环地址；如需访问局域网或远程开发服务，在配置中设置 allowRemoteUrls: true。`});
   const route = address.hash.startsWith('#/') ? address.hash.slice(1).split('?')[0] : address.pathname;
   const screen = {
     id: 'entry', role: '默认', group: '页面', state: '默认状态',

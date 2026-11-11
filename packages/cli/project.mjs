@@ -45,6 +45,9 @@ export async function readConfigFile(file) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw Error('配置必须是对象');
   if (!yaml) return {config, custom, directory, file};
   if (config.readyText !== undefined && typeof config.readyText !== 'string') throw Error('readyText 必须是文字');
+  if (config.allowRemoteUrls !== undefined && typeof config.allowRemoteUrls !== 'boolean') {
+    throw Error('allowRemoteUrls 必须是布尔值');
+  }
   const managed = basename(directory) === '.atlas';
   const output = config.output ?? 'generated';
   const {adapterConfig, ...settings} = config;

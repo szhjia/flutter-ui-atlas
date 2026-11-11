@@ -1,13 +1,21 @@
-export type Point={x:number;y:number};
-export type Size={width:number;height:number};
-export type Viewport=Point&{zoom:number};
-export type Placement=Point&{locked:boolean};
-export type LayoutDocument={schemaVersion:1;nodes:Record<string,Placement>;viewport:Viewport;catalogIds?:string[];pendingIds?:string[]};
-export type LayoutHistory={present:LayoutDocument;past:LayoutDocument[];future:LayoutDocument[]};
-export type CanvasNode=Placement&Size&{id:string;hidden:boolean};
-export type SolveResult={ok:true;nodes:CanvasNode[];affectedIds:string[]}|{ok:false;reason:'locked'|'no-space'|'budget';nodes:CanvasNode[]};
-export type ReconcileResult={document:LayoutDocument;pendingIds:string[];conflictIds:string[]};
-export type EdgeSpec={id:string;source:string;target:string;action:string};
-export type RoutedEdge={id:string;points:Point[];status:'routed'|'unroutable'};
-export type LabelSpec={id:string;size:Size;priority:number};
-export type LabelPlacement={id:string;center:Point;mode:'full'|'count'|'hidden'};
+export type Point = {x: number; y: number};
+export type Size = {width: number; height: number};
+export type Viewport = Point & {zoom: number};
+export type Placement = Point & {locked: boolean};
+export type LayoutDocument = {
+  schemaVersion: 1;
+  nodes: Record<string, Placement>;
+  viewport: Viewport;
+  catalogIds?: string[];
+  pendingIds?: string[];
+};
+export type LayoutHistory = {present: LayoutDocument; past: LayoutDocument[]; future: LayoutDocument[]};
+export type CanvasNode = Placement & Size & {id: string; hidden: boolean};
+export type SolveResult =
+  | {ok: true; nodes: CanvasNode[]; affectedIds: string[]}
+  | {ok: false; reason: 'locked' | 'no-space' | 'budget'; nodes: CanvasNode[]};
+export type ReconcileResult = {document: LayoutDocument; pendingIds: string[]; conflictIds: string[]};
+export type EdgeSpec = {id: string; source: string; target: string; action: string};
+export type RoutedEdge = {id: string; points: Point[]; status: 'routed' | 'unroutable'};
+export type LabelSpec = {id: string; size: Size; priority: number};
+export type LabelPlacement = {id: string; center: Point; mode: 'full' | 'count' | 'hidden'};

@@ -11,6 +11,7 @@ import {resolveProjectConfig, validateAtlasOutput} from './project.mjs';
 import {initAtlas} from './init.mjs';
 import {localWebDiscovery} from './local-web.mjs';
 import {serveViewer} from './view-server.mjs';
+import {assertLoopback} from '../capture/web-boundary.mjs';
 
 const usage = `用法：
   atlas init [--name <工程名>] [--url <Flutter Web 地址>] [--port <画布端口>] [--ready-text <就绪文字>] [--yes]
@@ -31,9 +32,21 @@ async function artifactLocation({config, directory, managed}) {
   return {publicPath, output: path};
 }
 
-async function openChrome(headless) {
+/** 浏览器通道解析：环境变量 ATLAS_BROWSER_CHANNEL 优先于配置 browserChannel，默认 chrome。 */
+export function resolveBrowserChannel(config = {}, env = process.env) {
+  const fromEnv = env.ATLAS_BROWSER_CHANNEL;
+  const channel = fromEnv !== undefined ? fromEnv
+    : config.browserChannel !== undefined ? config.browserChannel : 'chrome';
+  const source = fromEnv !== undefined ? 'ATLAS_BROWSER_CHANNEL' : 'browserChannel';
+  if (typeof channel !== 'string' || !channel.trim()) {
+    throw Error(`${source} 必须是非空的浏览器通道名（如 chrome、chromium、msedge）`);
+  }
+  return channel.trim();
+}
+
+async function openChrome(headless, channel) {
   const {chromium} = await import('playwright');
-  return chromium.launch({channel: 'chrome', headless});
+  return chromium.launch({channel, headless});
 }
 
 const defaultViewport = {width: 393, height: 852};
@@ -61,11 +74,17 @@ async function view(input, portOverride) {
   const activeAdapter = config.discovery ?? config.adapter;
   const viewer = config.viewer;
   const preview = viewer?.preview ?? config.discovery?.preview;
-  const browserPreview = preview
+  let browserPreview = preview
     ? {origin: webUrl(preview.origin).origin, sessionParam: preview.sessionParam, entries: preview.entries, query: preview.query}
     : implicit || entryMode ? {routeMode: 'pathname', localOnly: true}
     : !custom ? {routeMode: config.routeMode === 'pathname' ? 'pathname' : 'hash'}
     : Object.keys(previewUrls).length ? {urls: previewUrls} : undefined;
+  if (browserPreview?.origin) {
+    assertLoopback(new URL(browserPreview.origin), {
+      allowRemote: config.allowRemoteUrls === true,
+      message: 'preview.origin 必须是本地回环地址；如需局域网或远程预览源，在配置中设置 allowRemoteUrls: true。',
+    });
+  }
   const sourceFingerprint = custom
     ? activeAdapter?.sourceFingerprint?.bind(activeAdapter)
     : (config.sourceFiles?.length ? () => sourceFingerprintForFiles(config.sourceFiles, directory)?.() : undefined);
@@ -127,14 +146,15 @@ export async function runAtlas(args = process.argv.slice(2)) {
     }
     if (project.entryMode && !building) throw Error('录制需要 discovery 配置，可通过 adapterConfig 接入');
     const discovery = project.implicit ? localWebDiscovery(values.url, values['ready-text']?.trim())
-      : project.entryMode ? localWebDiscovery(input.config.baseUrl, input.config.readyText?.trim() || undefined)
+      : project.entryMode ? localWebDiscovery(input.config.baseUrl, input.config.readyText?.trim() || undefined,
+        {allowRemote: input.config.allowRemoteUrls === true, label: 'baseUrl'})
       : input.config.discovery;
     const viewport = input.config.viewport ?? defaultViewport;
     if (discovery) {
       if (!validViewport(viewport)) throw Error('viewport 的 width 和 height 必须是正整数');
       const mode = building ? 'capture' : values.journeys ? 'journeys' : 'manual';
       const result = await runDiscovery({...input, discovery, viewport, mode,
-        launchBrowser: () => openChrome(mode !== 'manual'),
+        launchBrowser: () => openChrome(mode !== 'manual', resolveBrowserChannel(input.config)),
       });
       console.log(JSON.stringify({
         captureId: result.captureId,
@@ -150,7 +170,7 @@ export async function runAtlas(args = process.argv.slice(2)) {
       viewport: input.config.viewport ?? defaultViewport,
       requireObservedEdges: input.config.requireObservedEdges,
       adapter: () => captureAdapter(input),
-      launchBrowser: () => openChrome(true),
+      launchBrowser: () => openChrome(true, resolveBrowserChannel(input.config)),
     });
     const summary = {
       captureId: result.captureId, pages: result.screens.length,

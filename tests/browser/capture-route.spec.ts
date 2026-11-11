@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {capture} from '../../packages/capture/index.mjs';
 import {declarativeConfig} from '../../packages/capture/declarative.mjs';
 
-const origin = 'http://atlas-fixture.test';
+const origin = 'http://127.0.0.1:61234';
 const screens = [
   {id:'start', route:'/start', entry:'/start.html', title:'首页', ready:{role:'heading', name:'首页'}},
   {id:'detail', route:'/detail', entry:'/right.html', title:'详情', ready:{role:'heading', name:'详情'}},

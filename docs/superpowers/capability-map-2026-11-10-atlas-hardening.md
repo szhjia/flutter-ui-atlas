@@ -17,11 +17,11 @@
 | `failure-semantics` | 失败路径无统一「保留上一个好状态 + 可行动诊断」语义 | P0-1 刷新丢画布、P1-4 布局损坏无恢复、P1-5 入口白屏、P1-7 失败归档空 | — | **已完成**（2026-11-10，验证记录 `docs/失败语义验证记录.md`） |
 | `output-locking` | 输出目录写互斥模型未定义（持锁者、生命周期、陈旧检测） | P0-2 锁残留阻塞 + 附录A★ capture() 不取锁可并发发布 | — | **已完成**（2026-11-11，验证记录 `docs/输出互斥验证记录.md`） |
 | `eng-base` | 验证全靠手工、无风格护栏（最小集） | P1-10（部分：lint/format）、P2-8 忽略规则（捎带：tsconfig 含 tests、playwright 版本钉法、jest-dom 清理） | — | **已完成**（2026-11-11，验证记录 `docs/工程化基座验证记录.md`；捎带三项全部落实） |
-| `boundary-consistency` | URL 校验/浏览器启动/路由构造散落多入口，无单一策略出口 | P1-1 回环口径不一、P1-2 Chrome 硬编码、P1-3 pathname 根路径假设 | — | 未开始 |
-| `delivery-surface` | 「包对外承诺什么」无单一事实源 | P1-6 exports 缺 config、P1-9 打包双维护 + engines 漂移 | —（冒烟内置在 pack 脚本，不依赖 eng-base） | 未开始 |
-| `canvas-core-maint` | 常量无名内联 + 单行密排，有意差异不可见 | P2-1 A* 零覆盖、P2-2 常量收敛、P2-3 格式化 | `eng-base`（format 工具） | 未开始 |
-| `dart-sdk-scope` | 预付抽象：三接口零消费者 → 收缩导出面 | P2-5 三接口零消费、P2-6 SDK 测试单薄 | — | 未开始 |
-| `docs-examples` | 文档/示例即接口却无事实源、不被验证 | P1-11 HTML/MD 双维护、P2-7 指向不存在目录、P1-8 正则示例脆弱、P2-4 hash 不剥参 | — | 未开始 |
+| `boundary-consistency` | URL 校验/浏览器启动/路由构造散落多入口，无单一策略出口 | P1-1 回环口径不一、P1-2 Chrome 硬编码、P1-3 pathname 根路径假设 | — | **已完成**（2026-11-11，验证记录 `docs/运行时边界验证记录.md`；含 allowRemoteUrls 有意收紧） |
+| `delivery-surface` | 「包对外承诺什么」无单一事实源 | P1-6 exports 缺 config、P1-9 打包双维护 + engines 漂移 | —（冒烟内置在 pack 脚本，不依赖 eng-base） | **已完成**（2026-11-11，验证记录 `docs/交付面验证记录.md`；依赖集合与 engines 自动化，bin/files 结构字段手工保留并记档） |
+| `canvas-core-maint` | 常量无名内联 + 单行密排，有意差异不可见 | P2-1 A* 零覆盖、P2-2 常量收敛、P2-3 格式化 | `eng-base`（format 工具） | **已完成**（2026-11-11，验证记录 `docs/画布可维护性验证记录.md`；字面 4096 预算分支留缺口并记录） |
+| `dart-sdk-scope` | 预付抽象：三接口零消费者 → 收缩导出面 | P2-5 三接口零消费、P2-6 SDK 测试单薄 | — | **已完成**（2026-11-11，验证记录 `docs/DartSDK收敛验证记录.md`；blocked 解除——经授权安装 Flutter 3.47.9 后执行，公开面仅 observer，三接口休眠于 lib/src） |
+| `docs-examples` | 文档/示例即接口却无事实源、不被验证 | P1-11 HTML/MD 双维护、P2-7 指向不存在目录、P1-8 正则示例脆弱、P2-4 hash 不剥参 | — | **已完成**（2026-11-11，验证记录 `docs/文档与示例验证记录.md`；HTML 已删除、MD 单一事实源） |
 
 ## 构建顺序
 

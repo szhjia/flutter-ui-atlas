@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/AppMap.tsx",
+    "./config": "./src/config.ts",
     "./model": "./src/model.ts"
   },
   "peerDependencies": {
