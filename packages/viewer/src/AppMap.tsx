@@ -1,11 +1,13 @@
-import {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {memo, useCallback, useEffect, useId, useMemo, useRef, useState} from 'react';
 import {Background, Controls, Handle, MiniMap, Position, ReactFlow, ReactFlowProvider, useReactFlow, type Node, type NodeProps, type Edge, MarkerType} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import './app-map.css';
 import {type AppMapManifest, type CaptureAttempt, type MapScreen, visibleEdges, visibleScreens} from './model';
 
 import {useCanvasController,isEditingTarget} from './canvas/useCanvasController';
+import {CANVAS_ZOOM} from './canvas/constants';
 import {CanvasToolbar} from './canvas/CanvasToolbar';
+import {GroupSelect} from './canvas/GroupSelect';
 import {AtlasEdge} from './canvas/AtlasEdge';
 import {EdgeLabels} from './canvas/EdgeLabels';
 import {routeEdges} from './canvas/route-edges';
@@ -46,20 +48,26 @@ export interface AtlasViewerAdapter {
 type ViewerPresentation = Omit<AtlasViewerAdapter, 'loadManifest' | 'loadLatestAttempt'> & {shell?: AtlasShellConfig};
 type AtlasViewerProps = {adapter: AtlasViewerAdapter; config?: never} | {config: AtlasViewerConfig; adapter?: never};
 
+function BrandLogo({url, text}: {url?: string; text?: string}) {
+  const [failed, setFailed] = useState(false);
+  const src = typeof url === 'string' && safeLink(url) && !failed ? url : undefined;
+  return <span className={`map-logo${src ? ' has-image' : ''}`} aria-hidden="true">
+    {src ? <img src={src} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)}/> : text ?? 'A'}
+  </span>;
+}
+
 function ShellHeader({presentation, map, refresh}: {
   presentation: ViewerPresentation;
   map?: AppMapManifest;
   refresh: () => void;
 }) {
   const shell = presentation.shell;
+  const title = shell?.title ?? presentation.title ?? 'UI Atlas';
   const links = shell?.headerLinks ?? (presentation.homeUrl ? [{label: '返回工作台 ↗', href: presentation.homeUrl}] : []);
   return <header className="map-topbar">
     <div className="map-brand">
-      <span className="map-logo" aria-hidden="true">{shell?.logoText ?? 'A'}</span>
-      <div>
-        <h1>{shell?.title ?? presentation.title ?? 'UI Atlas'} <span>UI 画布</span></h1>
-        <p>{shell?.subtitle ?? '从页面全貌，走进真实体验'}</p>
-      </div>
+      <BrandLogo key={shell?.logoUrl} url={shell?.logoUrl} text={shell?.logoText}/>
+      <h1 title={title}>{title}</h1>
     </div>
     <div className="map-top-actions">
       {map && <><span>{map.screens.filter(screen => screen.status === 'captured').length} 个已采集页面{map.discovery && ` · ${map.screens.filter(screen => screen.status === 'pending').length} 个待采集`} · {map.edges.filter(edge => edge.status === 'observed').length} 条已验证连线</span><button onClick={refresh}>刷新采集结果</button></>}
@@ -91,9 +99,11 @@ function MapCanvas({map, attempt, loadError, refresh, adapter}: {map: AppMapMani
   const [selectedId,setSelectedId] = useState<string|null>(null);
   const [live,setLive] = useState<{id:string;url:string}|null>(null);
   const [previewError,setPreviewError] = useState('');
-  const [allEdges,setAllEdges] = useState(Boolean(map.discovery));
+  const [showEdges,setShowEdges] = useState(true);
   const [selectedEdge,setSelectedEdge]=useState<string|null>(null);
   const [collapsed,setCollapsed]=useState(false);
+  const inspectorId = useId();
+  const inspectorAction = collapsed ? '展开详情' : '收起详情';
   const [source,setSource] = useState<string|null>(null);
 
   const flow = useReactFlow<ScreenNode>();
@@ -122,8 +132,9 @@ function MapCanvas({map, attempt, loadError, refresh, adapter}: {map: AppMapMani
   const lockAction=(id:string)=>{if(!toggles.current.has(id))toggles.current.set(id,()=>controllerRef.current.toggleLock(id));return toggles.current.get(id)!;};
   const active=geometry.find(n=>n.id===controller.draggingId);
   const nodes:ScreenNode[]=geometry.filter(n=>map.screens.some(s=>s.id===n.id)&&(!n.hidden||(active&&Math.hypot(n.x-active.x,n.y-active.y)<1400))).map(n=>({id:n.id,type:'screen',data:{screen:map.screens.find(s=>s.id===n.id)!,locked:n.locked,ghost:n.hidden,toggle:lockAction(n.id)},position:{x:n.x,y:n.y},measured:{width:n.width,height:n.height},selected:n.id===selectedId,draggable:!n.locked&&!n.hidden,selectable:!n.hidden,focusable:!n.hidden,style:n.hidden?{width:n.width,height:n.height,pointerEvents:'none'}:undefined}));
-  const shownEdges=visibleEdges(map.edges,screens).filter(e => (scope !== 'flow' || e.status === 'observed') &&
-    (allEdges || !selected || e.source === selected.id || e.target === selected.id));
+  const shownEdges = showEdges
+    ? visibleEdges(map.edges, screens).filter(edge => scope !== 'flow' || edge.status === 'observed')
+    : [];
   const cache=useRef<{nodes:CanvasNode[];routes:RoutedEdge[];signature:string}>({nodes:[],routes:[],signature:''});
   const signature=shownEdges.map(e=>`${e.id}:${e.source}:${e.target}`).join('|');
   const changedIds=new Set(geometry.filter(n=>{const old=cache.current.nodes.find(o=>o.id===n.id);return !old||old.x!==n.x||old.y!==n.y||old.width!==n.width||old.height!==n.height;}).map(n=>n.id));
@@ -159,7 +170,7 @@ function MapCanvas({map, attempt, loadError, refresh, adapter}: {map: AppMapMani
     {loadError && <div className="atlas-notice" role="alert">读取采集结果失败，当前显示上一次成功结果。{loadError.split('\n', 1)[0]} <button onClick={refresh}>重试</button></div>}
     <div className="map-toolbar">
       <div className="map-segment" aria-label="身份筛选">{['全部',...roles.filter(r=>!adapter.sharedRoles?.includes(r))].map(item=><button key={item} aria-pressed={role===item} onClick={()=>resetFilters(item,group,query)}>{item==='全部'?'全部身份':`${item}空间`}</button>)}</div>
-      <select aria-label="功能分组" value={group} onChange={e=>resetFilters(role,e.target.value,query)}><option value="全部">全部功能</option>{groupOrder.map(g=><option key={g}>{g}</option>)}</select>
+      <GroupSelect groups={groupOrder} value={group} onChange={value => resetFilters(role, value, query)}/>
       <input aria-label="搜索页面" placeholder="搜索页面或路由…" value={query} onChange={e=>resetFilters(role,group,e.target.value)}/>
       {map.discovery&&<select aria-label="页面覆盖范围" value={scope} onChange={event=>{
         setCoverage(event.target.value as CoverageView);
@@ -171,28 +182,36 @@ function MapCanvas({map, attempt, loadError, refresh, adapter}: {map: AppMapMani
         <option value="all">全部页面（{map.screens.length}）</option>
       </select>}
       <span className="map-count">显示 {screens.length} / {scopedCount}</span>
-      <CanvasToolbar canUndo={controller.canUndo} canRedo={controller.canRedo} undo={controller.undo} redo={controller.redo} arrange={controller.arrangeVisible} count={geometry.filter(n=>!n.hidden&&!n.locked).length} locked={geometry.find(n=>n.id===selectedId)?.locked} onLock={selectedId?()=>controller.toggleLock(selectedId):undefined}/>
-      <button onClick={()=>void flow.fitView({padding:.08,duration:300,minZoom:.08,maxZoom:.8})}>查看全貌</button>
+      <div className="map-toolbar-actions">
+        <CanvasToolbar canUndo={controller.canUndo} canRedo={controller.canRedo} undo={controller.undo} redo={controller.redo} arrange={controller.arrangeVisible} count={geometry.filter(n=>!n.hidden&&!n.locked).length} locked={geometry.find(n=>n.id===selectedId)?.locked} onLock={selectedId?()=>controller.toggleLock(selectedId):undefined}/>
+        <button onClick={()=>void flow.fitView({padding:.08,duration:300,minZoom:CANVAS_ZOOM.min,maxZoom:.8})}>查看全貌</button>
+        <button type="button" className="atlas-inspector-toggle" aria-label={inspectorAction} title={inspectorAction}
+          aria-expanded={!collapsed} aria-controls={inspectorId} onClick={() => setCollapsed(value => !value)}>
+          <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4">
+            {!collapsed && <path d="M12 4h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-4z" fill="currentColor" stroke="none" opacity=".2"/>}
+            <rect x="3" y="4" width="14" height="12" rx="2"/><path d="M12 4v12"/>
+          </svg>
+        </button>
+      </div>
     </div>
     {(controller.issue||controller.externalAvailable||controller.pendingIds.length>0||controller.conflictIds.length>0)&&<div className="atlas-notice" role="status">{controller.issue} {controller.corrupted&&<button onClick={controller.discardCorruptedLayout}>丢弃损坏布局</button>}{controller.conflictIds.length>0&&`有 ${controller.conflictIds.length} 个页面尺寸变化后间距不足，请手动移动或整理。`}{controller.externalAvailable&&<><span>另一窗口已更新布局。</span><button onClick={controller.loadExternalLayout}>载入外部布局</button><button onClick={controller.keepLocalLayout}>保留当前布局</button></>}{controller.pendingIds.map(id=><span key={id}>待定位：{map.screens.find(s=>s.id===id)?.title}<button onClick={()=>controller.toggleLock(id)}>解锁并定位</button></span>)}</div>}
     <div className="map-main">
       <section className="map-stage" aria-label="页面关系画布">
-        <ReactFlow<ScreenNode> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={.08} maxZoom={1.8}
+        <ReactFlow<ScreenNode> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={CANVAS_ZOOM.min} maxZoom={CANVAS_ZOOM.max}
           onNodesChange={changes=>{controller.onMeasured(changes.flatMap(c=>c.type==='dimensions'&&c.dimensions?[{id:c.id,size:c.dimensions}]:[]));const selection=changes.find(c=>c.type==='select'&&c.selected);if(selection?.type==='select')choose(selection.id);}}
           ariaLabelConfig={{'controls.ariaLabel':'画布控制','controls.zoomIn.ariaLabel':'放大','controls.zoomOut.ariaLabel':'缩小','controls.fitView.ariaLabel':'适应画布','minimap.ariaLabel':'页面缩略地图','handle.ariaLabel':'页面连接点','node.a11yDescription.default':'按回车选择页面，方向键移动，Esc 取消。','edge.a11yDescription.default':'页面之间的导航关系。'}}
           defaultViewport={controller.viewport} onMoveEnd={(_,viewport)=>controller.onViewportCommit(viewport)} nodesConnectable={false} deleteKeyCode={null}
           onNodeClick={(_,node)=>choose(node.id)} onNodeDragStart={(_,node)=>controller.onDragStart(node.id)} onNodeDrag={(_,node)=>{if(node)controller.onDrag(node.id,node.position);}} onNodeDragStop={(_,node)=>{if(node)controller.onDragStop(node.id,node.position);}}
           onEdgeClick={(_,edge)=>setSelectedEdge(edge.id)} onEdgeMouseEnter={(_,edge)=>setSelectedEdge(edge.id)}
           onPaneClick={()=>{setSelectedId(null);setLive(null);}}>
-          <EdgeLabels routes={routes} nodes={geometry} edges={shownEdges} focusedIds={focusedIds} onChoose={setSelectedEdge}/>
-          <Background color="#d6dce5" gap={24} size={1}/><Controls showInteractive={false}/>
+          {showEdges && <EdgeLabels routes={routes} nodes={geometry} edges={shownEdges} focusedIds={focusedIds} onChoose={setSelectedEdge}/>}
+          <Background color="#d6dce5" gap={24} size={1}/><Controls showInteractive={false} orientation="horizontal"/>
           <MiniMap style={{width:125,height:90}} pannable zoomable nodeColor={n=>['#81a8cd','#d8ba77','#91b4aa'][roles.indexOf((n.data.screen as MapScreen).role)%3]}/>
         </ReactFlow>
         {!screens.length&&<div className="map-no-results">没有匹配的页面，请调整筛选。</div>}
-        <div className="map-legend"><span>{routes.filter(r=>r.status==='unroutable').length>0?`${routes.filter(r=>r.status==='unroutable').length} 条关系空间不足；选页查看列表`: '自由布局 · 拖动局部避让'}</span><span><i/>实际点击验证</span><span><i className="declared"/>声明关系，未验证</span><label><input type="checkbox" checked={allEdges} onChange={e=>setAllEdges(e.target.checked)}/>始终显示全部连线</label></div>
+        <div className="map-legend"><span>{routes.filter(r=>r.status==='unroutable').length>0?`${routes.filter(r=>r.status==='unroutable').length} 条关系空间不足；选页查看列表`: '自由布局 · 拖动局部避让'}</span><span><i/>实际点击验证</span><span><i className="declared"/>声明关系，未验证</span><label><input type="checkbox" checked={showEdges} onChange={e=>setShowEdges(e.target.checked)}/>显示连线</label></div>
       </section>
-      <button className="atlas-inspector-toggle" aria-label={collapsed?'展开详情':'收起详情'} onClick={()=>setCollapsed(!collapsed)}>{collapsed?'‹':'›'}</button>
-      <aside hidden={collapsed} className={`map-inspector ${live?'map-inspector-live':''}`}>
+      <aside id={inspectorId} hidden={collapsed} className={`map-inspector ${live?'map-inspector-live':''}`}>
         {edgeDetail&&<div className="atlas-edge-detail"><h3>导航关系</h3><b>{map.screens.find(s=>s.id===edgeDetail.source)?.title} → {map.screens.find(s=>s.id===edgeDetail.target)?.title}</b><p>{edgeDetail.action}{edgeDetail.recordingSources?.length ? ` · ${edgeDetail.recordingSources.map(source => source==='manual'?'手动录制':'测试录制').join('、')}` : ''}</p><span>{edgeDetail.status==='observed'?'实际点击已验证':edgeDetail.status==='failed'?'验证失败':'声明关系，未验证'}</span><button onClick={()=>setSelectedEdge(null)}>关闭关系</button></div>}
         {selected?<>
           <div className="map-inspector-heading"><span>{selected.role} / {selected.group}</span><button aria-label="关闭页面详情" onClick={()=>{setSelectedId(null);setLive(null);}}>×</button></div>

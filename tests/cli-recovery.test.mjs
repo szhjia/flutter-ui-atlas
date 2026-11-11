@@ -24,6 +24,8 @@ test('采集配置无效时仍能用相同配置查看已有地图及失败报�
     await writeFile(join(output, 'manifest.json'), JSON.stringify({schemaVersion:1,captureId:'old',screens:[],edges:[]}));
     await writeFile(config, JSON.stringify({
       port, output, baseUrl:'http://127.0.0.1:1',
+      title: '采集项目名',
+      viewer: {shell: {title: '示例应用', logoUrl: 'https://example.com/brand.png', logoText: '示'}},
       screens:[{id:'home',title:'首页',route:'/',ready:{}}],
     }));
     const failed = spawn(process.execPath, [cli, 'capture', '--config', config], {stdio:'ignore'});
@@ -44,6 +46,11 @@ test('采集配置无效时仍能用相同配置查看已有地图及失败报�
     });
     const viewer = `http://127.0.0.1:${port}`;
     const html = await (await fetch(viewer)).text();
+    const embeddedConfig = html.match(/id="atlas-config">([^<]+)<\/script>/)?.[1];
+    assert(embeddedConfig, 'CLI 应向 Viewer 注入配置');
+    assert.deepEqual(JSON.parse(embeddedConfig).shell, {
+      title: '示例应用', logoUrl: 'https://example.com/brand.png', logoText: '示',
+    });
     const script = html.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
     assert(script, '安装后的画布应加载预编译脚本');
     assert.equal((await fetch(viewer + script)).status, 200);

@@ -1,5 +1,6 @@
 {
   "title": "Flutter UI Atlas",
+  "viewer": {"shell": {"title": "Flutter UI Atlas", "logoText": "示"}},
   "baseUrl": "http://127.0.0.1:60210/",
   "routeMode": "hash",
   "output": ".atlas/generated",

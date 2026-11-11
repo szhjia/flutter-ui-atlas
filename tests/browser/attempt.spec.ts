@@ -12,7 +12,7 @@ test('首次失败显示报告，有旧图时保留页面，恢复后清除提�
   await page.route('**/generated/latest-attempt.json', route => route.fulfill({json: attempt}));
 
   await page.goto('/');
-  await expect(page.getByRole('heading', {name: 'Flutter UI Atlas UI 画布'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Flutter UI Atlas', exact: true})).toBeVisible();
   const notice = page.getByRole('status').filter({hasText: '最近采集失败'});
   await expect(notice).toContainText('目录不能为空');
   await expect(notice.getByRole('link')).toHaveAttribute('href', attempt.report);
@@ -22,7 +22,7 @@ test('首次失败显示报告，有旧图时保留页面，恢复后清除提�
   await page.getByRole('button', {name: '重新加载'}).click();
   await expect(notice).toContainText('当前显示上一次成功结果');
   await expect(page.locator('.map-card')).toHaveCount(8);
-  await expect(page.getByRole('heading', {name: 'Flutter UI Atlas UI 画布'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Flutter UI Atlas', exact: true})).toBeVisible();
 
   attempt = {...attempt, captureId: 'fixture-2', status: 'passed', error: ''};
   manifest = {...manifest, captureId: attempt.captureId};

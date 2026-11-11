@@ -7,7 +7,9 @@ export interface AtlasHeaderLink {
 
 export interface AtlasShellConfig {
   title?: string;
+  logoUrl?: string;
   logoText?: string;
+  /** @deprecated 页眉已改为单行，保留该字段供旧配置使用。 */
   subtitle?: string;
   headerLinks?: readonly AtlasHeaderLink[];
   introNote?: string;
