@@ -28,11 +28,11 @@
 ## Commands
 
 ```sh
-rtk proxy pnpm type-check     # 类型检查
-rtk proxy pnpm test           # build + node --test + vitest 全量
-rtk proxy pnpm test:canvas    # 仅画布（vitest）
-rtk proxy pnpm build          # Viewer 构建
-rtk proxy pnpm test:browser   # 浏览器套件（模块收尾必跑一次）
+pnpm type-check     # 类型检查
+pnpm test           # build + node --test + vitest 全量
+pnpm test:canvas    # 仅画布（vitest）
+pnpm build          # Viewer 构建
+pnpm test:browser   # 浏览器套件（模块收尾必跑一次）
 ```
 
 ## Project Structure
@@ -83,7 +83,7 @@ TDD，每处先红后绿：
 
 ## Boundaries
 
-- **Always**：TDD 先红后绿；失败保留旧状态；诊断中文可行动；每任务完成跑 `rtk proxy pnpm test`。
+- **Always**：TDD 先红后绿；失败保留旧状态；诊断中文可行动；每任务完成跑 `pnpm test`。
 - **Ask first**：`docs/协议与适配接口.md` 新增小节（spec 批准即授权方向，写入时展示完整 diff）；localStorage 键名或 `LayoutDocument` schema 变更（本模块预期不碰）。
 - **Never**：不改 `manifest.json`/`attempt.json` 既有字段的兼容性（只把恒 0 的计数改成真实值、填充已有数组字段）；不动 `zoom` 字面量重复（属 `canvas-core-maint` 的常量收敛，本模块不引常量模块）；不碰输出目录互斥（属 `output-locking`）；不提交、不推送。
 
@@ -94,7 +94,7 @@ TDD，每处先红后绿：
 3. `#atlas-config` 内非法 JSON 渲染中文错误提示与 captureHint，不白屏；空标签行为不变（默认配置）。
 4. discovery 失败批次的归档：attempt.json 的 `failedScreens`/`failedEdges` 为真实统计，批内 manifest.json 的 screens 含各节点最终 `status`/`error`；成功路径产物不变。
 5. `docs/协议与适配接口.md` 新增「失败语义」小节，成文覆盖上述约定。
-6. `rtk proxy pnpm type-check`、`test`、`build` 全绿；`test:browser` 通过。
+6. `pnpm type-check`、`test`、`build` 全绿；`test:browser` 通过。
 
 ## Open Questions
 

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 工程根目录 `/Users/kimi/product/flutter-ui-atlas`；寓科接入工程 `/Users/kimi/projects/zhiwo_learning`。所有命令使用 `rtk` 前缀。
+- 工程根目录 `/Users/kimi/product/flutter-ui-atlas`；寓科接入工程 `/Users/kimi/projects/zhiwo_learning`。
 - 初始水平间距 160、垂直间距 120；交互最小安全间距水平 96、垂直 80；断开子图间距至少 240；障碍外扩 16。
 - 拖动最多影响 12 个邻居；其起始中心限制在目标节点中心两个最大节点对角线范围内。不全图重排；锁定、隐藏节点不动。
 - 手势从起始快照求解；Esc、无解回退和撤销均恢复整组。历史最多 50 条；只保存已提交布局，不保存中间帧。
@@ -77,7 +77,7 @@ type LabelPlacement = {id:string; center:Point; mode:'full'|'count'|'hidden'};
 
 - [ ] 写失败测试：宽224高528的 A@(0,0)、B@(500,0)、C@(3000,0)，A 目标@(300,0)；断言成功、B.x≥620、C 原位、输入深相等、affectedIds 仅 B。锁定 B 后断言 B 原位且 A 找到合法候选或整次失败，绝不重叠。
 - [ ] 补边界测试：隐藏节点视作固定、超过12邻居/范围失败、重复相同输入结果相同、反向拖回起点无累计漂移、负坐标、有限数值验证。无解返回原快照。
-- [ ] 运行 `rtk proxy pnpm exec vitest run tests/canvas/solve-drag.test.ts`，先记录失败原因。
+- [ ] 运行 `pnpm exec vitest run tests/canvas/solve-drag.test.ts`，先记录失败原因。
 - [ ] 实现四向最小平移候选、按拖动方向优先及总位移排序、ID稳定平局；从原快照做有界分支搜索，最多512候选、128传播迭代。锁定障碍先尝试最近合法停放点；最终整体校验。不使用持续物理模拟。
 - [ ] 配置 `test:canvas` 为 `vitest run`，include 仅 `tests/canvas/**/*.test.{ts,tsx}`，保留现有 Node 测试命令；运行本任务测试、类型检查，确认通过。
 
@@ -142,7 +142,7 @@ type LabelPlacement = {id:string; center:Point; mode:'full'|'count'|'hidden'};
 - [ ] 在0.2/0.65/1缩放与1100/1600宽度检查线段、标签及页面实际包围盒；检查标签中心命中元素属于标签层、实色背景且不交页面。保存代表截图并人工审视，不只验证DOM存在。
 - [ ] 记录参考机器、浏览器版本、100/150图的实际指针到反馈p95和求解预算降级次数，目标≤50ms。主线程阻塞超过目标时先优化失效范围/候选缓存，必要时以Worker为一次独立调整重新验收，不降低锁定与碰撞约束。
 - [ ] 在独立示例及寓科当前56页分别真实验证；沿用现有采集结果，除非截图/适配器变化，不因画布改动重跑56页采集或Flutter构建。
-- [ ] 集中执行 `rtk proxy pnpm test`、`rtk proxy pnpm type-check`、`rtk proxy pnpm build`、`rtk proxy pnpm test:browser`；外部工作台执行type-check、受影响测试及build，并在内置浏览器检查用户使用的实际URL。
+- [ ] 集中执行 `pnpm test`、`pnpm type-check`、`pnpm build`、`pnpm test:browser`；外部工作台执行type-check、受影响测试及build，并在内置浏览器检查用户使用的实际URL。
 - [ ] 记录全部失败并修复，再复跑失败项及相关回归；所有必要检查为绿后更新文档，区分正式画布验证和早期示意。无需无关Go/Flutter/原生全量测试。
 - [ ] 最终独立审阅接口一致性、局部边界、持久化、标签降级和未修改产品组件；保存diff和验证证据，未经另行要求不提交、不发布。
 

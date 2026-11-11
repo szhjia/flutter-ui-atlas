@@ -2,7 +2,7 @@
 
 **日期**：2026-11-10　**Spec**：`docs/superpowers/specs/2026-11-10-failure-semantics-design.md`（已批准，含三项默认倾向）
 **台账**：`.superpowers/sdd/2026-11-10-failure-semantics/progress.md`（任务 1 开工时创建，逐任务记录 RED→GREEN 与裁决）
-**执行约定**：每任务 TDD（先红后绿）、完成即跑 `rtk proxy pnpm test`；新写/改动行宽 ≤120、失败分支具名；不提交（AGENTS.md）。
+**执行约定**：每任务 TDD（先红后绿）、完成即跑 `pnpm test`；新写/改动行宽 ≤120、失败分支具名；不提交（AGENTS.md）。
 
 ## 任务顺序与依赖
 
@@ -17,7 +17,7 @@
 
 - **做法**：`AppMap.tsx` 的 `load()` 合并语义——失败快照（`map:null`）到达且 `previous.map` 存在时，保留 `previous.map`、合并 `snapshot.attempt ?? previous.attempt` 与错误信息；`map` 存在则原样替换。`MapCanvas` 顶部在 `error && map` 时渲染 `role="alert"` 通知：`读取采集结果失败：<首行>。当前显示上一次成功结果。`（复用 `atlas-notice` 样式类与 AttemptNotice 的文案节奏）。
 - **Acceptance**：组件测试两场景通过——A) 首载成功 → 二次 `loadManifest` reject → 旧页面卡片仍在、出现含「当前显示上一次成功结果」的 alert；B) 首载即失败 → 错误屏 + 重新加载按钮（锚定现状防回归）。
-- **Verify**：`rtk proxy pnpm test:canvas`（新增 `tests/canvas/app-map.test.tsx`）+ 全量 `rtk proxy pnpm test`。
+- **Verify**：`pnpm test:canvas`（新增 `tests/canvas/app-map.test.tsx`）+ 全量 `pnpm test`。
 - **Files**：`packages/viewer/src/AppMap.tsx`、`tests/canvas/app-map.test.tsx`（新增，含最小 manifest fixture 与 adapter mock）。
 - **风险与对策**：ReactFlow 在 jsdom 需要 `ResizeObserver` stub——测试文件顶部统一 stub；若整树渲染不稳，降级为「合并逻辑纯函数测试 + 浏览器 spec 断言」双保险（在台账记录裁决）。
 
@@ -47,16 +47,16 @@
 
 - **做法**：`docs/协议与适配接口.md` 新增「失败语义」小节——统一约定（失败不降级、诊断可行动）+ 四个落点的具体行为；写 `docs/失败语义验证记录.md`（验证证据：命令输出、测试计数）与 sdd 台账终审记录。
 - **Acceptance**：协议小节成文并覆盖四点；验证记录含全量命令结果。
-- **Verify**：`rtk proxy pnpm type-check && rtk proxy pnpm test && rtk proxy pnpm build && rtk proxy pnpm test:browser` 全绿。
+- **Verify**：`pnpm type-check && pnpm test && pnpm build && pnpm test:browser` 全绿。
 - **Files**：`docs/协议与适配接口.md`、`docs/失败语义验证记录.md`（新增）、`.superpowers/sdd/2026-11-10-failure-semantics/progress.md`。
 
 ## 验证关卡
 
 | 关卡 | 命令 | 时机 |
 |---|---|---|
-| 任务级 | `rtk proxy pnpm test`（含新增用例） | 每任务 GREEN 后 |
-| 模块级 | `rtk proxy pnpm type-check`、`test`、`build` | 任务 5 |
-| 浏览器 | `rtk proxy pnpm test:browser` | 任务 5（真实浏览器验收，静态检查不冒充） |
+| 任务级 | `pnpm test`（含新增用例） | 每任务 GREEN 后 |
+| 模块级 | `pnpm type-check`、`test`、`build` | 任务 5 |
+| 浏览器 | `pnpm test:browser` | 任务 5（真实浏览器验收，静态检查不冒充） |
 
 ## 边界重申（对齐 spec）
 

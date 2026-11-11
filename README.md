@@ -7,9 +7,9 @@
 先从 Atlas 源码根目录生成安装包。安装使用 Node.js 22 或以上，采集和录制使用本机 Google Chrome。
 
 ```sh
-rtk proxy pnpm install --frozen-lockfile
-rtk proxy pnpm run pack:cli
-rtk proxy npm install --global .runtime/packages/flutter-ui-atlas-0.1.0.tgz
+pnpm install --frozen-lockfile
+pnpm run pack:cli
+npm install --global .runtime/packages/flutter-ui-atlas-0.1.0.tgz
 ```
 
 从 Flutter 工程根目录运行 `atlas init`。终端会询问工程显示名、Flutter Web 地址、画布端口和入口就绪文字；脚本可用 `atlas init --yes` 接受默认值，也可通过参数指定这些值。提交生成的 `.atlas/atlas.yaml`、`README.md` 和 `.gitignore`，把生成结果留在本机。
@@ -48,24 +48,24 @@ tests/                      采集器失败路径与目录契约测试
 本轮验证工具链为 Node 26.12.1（见 `.nvmrc`）、pnpm 10.33.0（见 `packageManager`）和已安装的 Google Chrome。构建独立 Flutter 示例还需 Flutter SDK。配置文件中的端口可以替换；已有服务可复用，端口冲突时启动失败。
 
 ```sh
-rtk proxy pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile
 
 # 终端一，从 examples/flutter_app 目录运行
-rtk proxy flutter pub get
-rtk proxy flutter build web --debug --no-web-resources-cdn --target lib/main.dart
-rtk proxy python3 -m http.server 60210 --bind 127.0.0.1 --directory build/web
+flutter pub get
+flutter build web --debug --no-web-resources-cdn --target lib/main.dart
+python3 -m http.server 60210 --bind 127.0.0.1 --directory build/web
 
 # 终端二，从 Atlas 工程根目录运行
-rtk proxy pnpm build
-rtk proxy pnpm atlas build --config examples/atlas.config.json
-rtk proxy pnpm atlas view --config examples/atlas.config.json
+pnpm build
+pnpm atlas build --config examples/atlas.config.json
+pnpm atlas view --config examples/atlas.config.json
 ```
 
 打开 `http://127.0.0.1:60200/`。示例使用普通 `main.dart` 构建，配置在 [examples/atlas.config.json](examples/atlas.config.json)。产物默认写到配置所在目录的 `.atlas/generated/`。用 `output` 可继续读取已有的 v1 采集目录。失败时当前地图继续指向最近一次成功采集，画布提示最近失败并提供报告。
 
 ## 接入其他 Flutter Web 应用
 
-复制示例 JSON 到项目自己的开发工具目录，配置 `baseUrl`、页面 ID、路由和能区分页面状态的可见内容。使用 `routeMode: "pathname"` 支持路径路由，子路径部署（如 `https://host/app/`）需加 `routePrefix: "/app"`；`baseUrl` 默认限回环地址，局域网或远程开发服务需设 `allowRemoteUrls: true`。需要复现的页面操作通过连线的 `click` 登记；省略时只展示声明关系。启动项目自身的 Web 服务，再运行 Atlas 两条命令。可从任意目录运行 `rtk proxy atlas build --config <配置绝对路径>`。
+复制示例 JSON 到项目自己的开发工具目录，配置 `baseUrl`、页面 ID、路由和能区分页面状态的可见内容。使用 `routeMode: "pathname"` 支持路径路由，子路径部署（如 `https://host/app/`）需加 `routePrefix: "/app"`；`baseUrl` 默认限回环地址，局域网或远程开发服务需设 `allowRemoteUrls: true`。需要复现的页面操作通过连线的 `click` 登记；省略时只展示声明关系。启动项目自身的 Web 服务，再运行 Atlas 两条命令。可从任意目录运行 `atlas build --config <配置绝对路径>`。
 
 登录、数据准备或自定义路由可使用可信本地 `.mjs` 配置。默认导出含 `adapter`、`output` 等设置的对象，选填 `previewUrls` 为按页面 ID 索引的 HTTP(S) 地址。没有地址时，独立画布仍支持截图和关系查看。适配接口、判据和配置字段见 [协议与适配接口](docs/协议与适配接口.md)。
 
@@ -84,14 +84,14 @@ rtk proxy pnpm atlas view --config examples/atlas.config.json
 ## 验证命令
 
 ```sh
-rtk proxy pnpm type-check
-rtk proxy pnpm test
-rtk proxy pnpm build
-rtk proxy pnpm test:browser
-rtk proxy node examples/verify-viewer.mjs http://127.0.0.1:60200/
+pnpm type-check
+pnpm test
+pnpm build
+pnpm test:browser
+node examples/verify-viewer.mjs http://127.0.0.1:60200/
 # packages/flutter_ui_atlas 目录
-rtk proxy flutter test
-rtk proxy flutter analyze --no-pub
+flutter test
+flutter analyze --no-pub
 ```
 
 浏览器验收证据保存在 `.runtime/`，采集截图保存在配置的产物目录。当前已有 Navigator 独立示例和外部自定义 Router 应用接入，见[配置化接入验证记录](docs/配置化接入验证记录.md)。自动热重载采集、增量依赖分析、构建版本握手与 go_router 专用插件仍未实现。
@@ -112,10 +112,10 @@ rtk proxy flutter analyze --no-pub
 自动模式使用独立的 `discovery` 配置与产物目录。启动上文的 Flutter Web 示例并构建 Viewer 后，在 Atlas 根目录执行：
 
 ```sh
-rtk proxy pnpm atlas build --config examples/atlas-discovery.mjs
-rtk proxy pnpm atlas record --config examples/atlas-discovery.mjs
-rtk proxy pnpm atlas record --config examples/atlas-discovery.mjs --journeys
-rtk proxy pnpm atlas view --config examples/atlas-discovery.mjs
+pnpm atlas build --config examples/atlas-discovery.mjs
+pnpm atlas record --config examples/atlas-discovery.mjs
+pnpm atlas record --config examples/atlas-discovery.mjs --journeys
+pnpm atlas view --config examples/atlas-discovery.mjs
 ```
 
 手动录制从应用入口打开隔离 Chrome，操作完成后在终端按回车。普通路由候选由项目适配器从已有定义派生。Atlas 对实际到达、内容就绪的页面截图，对已确认的真实操作生成连线。新候选和缺少复现数据的候选显示为「待采集」。独立画布实时预览需要应用服务继续运行。
