@@ -45,7 +45,8 @@ class ShopStore extends ChangeNotifier {
       raw = await storage.read();
     } catch (_) {
       store._blocked = true;
-      store.warning = '本地数据读取失败，已暂停保存。可继续临时使用，或重置演示数据后重试。';
+      store.warning =
+          'Could not read local data. Saving is paused. Continue for now, or reset demo data to try again.';
       return store;
     }
     if (raw == null) return store;
@@ -79,7 +80,8 @@ class ShopStore extends ChangeNotifier {
       store._carts.addAll(carts);
     } catch (_) {
       store._blocked = true;
-      store.warning = '本地数据损坏，已保留原数据并暂停保存。可临时使用，或重置演示数据。';
+      store.warning =
+          'Local data is damaged. The original data is kept and saving is paused. Continue for now, or reset demo data.';
     }
     return store;
   }
@@ -105,8 +107,9 @@ class ShopStore extends ChangeNotifier {
 
   Future<void> add(String id) => change(id, 1);
   Future<void> change(String id, int delta) {
-    if (_account == null) throw StateError('请先登录');
-    if (findProduct(id) == null) throw ArgumentError.value(id, 'id', '商品不存在');
+    if (_account == null) throw StateError('Sign in first');
+    if (findProduct(id) == null)
+      throw ArgumentError.value(id, 'id', 'Product not found');
     final cart = _carts.putIfAbsent(_account!, () => {});
     final next = ((cart[id] ?? 0) + delta).clamp(0, 99);
     if (next == 0) {
@@ -118,7 +121,7 @@ class ShopStore extends ChangeNotifier {
   }
 
   Future<void> remove(String id) {
-    if (_account == null) throw StateError('请先登录');
+    if (_account == null) throw StateError('Sign in first');
     _carts[_account]?.remove(id);
     return _save();
   }
@@ -140,13 +143,14 @@ class ShopStore extends ChangeNotifier {
     });
     notifyListeners();
     if (_blocked) return Future.value();
-    // 在排队前捕获快照，快速加购、切换账户及退出也遵循操作顺序。
+    // Snapshot before queuing so rapid additions, account changes, and sign-outs keep their order.
     _writes = _writes.then((_) async {
       try {
         await storage.write(snapshot);
         warning = null;
       } catch (_) {
-        warning = '本地保存失败，当前操作仍在内存中。请重试保存后再刷新。';
+        warning =
+            'Could not save locally. Your changes are still in memory. Retry saving before refreshing.';
       }
       notifyListeners();
     });

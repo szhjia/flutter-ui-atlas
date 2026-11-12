@@ -1,18 +1,62 @@
-# 拾物商城 Demo
+# Shiwu Shop Demo
 
-本目录是独立的 Flutter 工程，入口为 `lib/main.dart`。可将整个目录复制到其他位置，使用 Flutter SDK 开发、测试和构建。
+A standalone Flutter shop with six products, phone and tablet layouts, sign-in, product details, and a cart. It has no backend, orders, payments, or checkout.
+
+The entry point is `lib/main.dart`. You can copy this directory elsewhere and run it with Flutter; it has no dependency on Atlas or a sibling project.
+
+## Run
+
+With the Flutter SDK installed, run from this directory:
 
 ```sh
-# 在 demo 目录中执行
 flutter pub get
 flutter run -d web-server --web-hostname 127.0.0.1 --web-port 60210
+```
+
+Open `http://127.0.0.1:60210/`. Sign in as `user1` or `user2`, both with password `1234.com`. Both accounts have the same permissions and separate carts.
+
+Your session and carts are saved in the current browser and restored on reload. Signing out keeps your cart. **Reset demo data** clears both carts and signs you out after confirmation.
+
+Below 720 logical pixels the app uses bottom navigation; at wider sizes it uses a navigation rail. All product names, prices, descriptions, and actions are available in both layouts.
+
+## Capture with Atlas
+
+Keep the app running. In another terminal, from this directory:
+
+```sh
+atlas init --url http://127.0.0.1:60210/ --ready-text "Sign in to Shiwu"
+atlas config
+```
+
+In the configuration page, set the app URL above and choose form authentication:
+
+| Setting                | Value                            |
+| ---------------------- | -------------------------------- |
+| Login URL              | `http://127.0.0.1:60210/`        |
+| Username field (label) | `Username`                       |
+| Password field (label) | `Password`                       |
+| Submit button          | `Sign in`                        |
+| Success check          | role `heading`, name `Home`      |
+| Failure text           | `Incorrect username or password` |
+
+Add the two demo accounts, test each login, and save. Then add the page catalog below to capture the signed-in states.
+
+For the full map, merge `routeMode`, `profiles`, `timeoutMs`, `requireObservedEdges`, `sourceFiles`, `screens`, and `edges` from [the sample catalog](../tests/helpers/shop-catalog.yaml) into `.atlas/atlas.yaml`. Keep the app URL, authentication, and account UUIDs saved by the configuration page. If you copied this demo out of the repository, get the catalog from the [source repository](https://github.com/szhjia/flutter-ui-atlas/blob/main/tests/helpers/shop-catalog.yaml).
+
+```sh
+atlas build                  # Capture phone and pad profiles
+atlas view --profile phone
+atlas view --profile pad
+```
+
+The catalog covers 16 account/page states and 21 transitions per viewport. Atlas uses independent Chrome contexts, leaving your ordinary browsing session alone. Everything in `.atlas/` stays local and is ignored by Git.
+
+## Check and build
+
+```sh
 flutter analyze
 flutter test
 flutter build web --no-web-resources-cdn --no-wasm-dry-run
 ```
 
-账户 `user1`、`user2`，密码均为 `1234.com`。支持手机和平板布局、登录退出、商品详情、购物车、本地保存与重置，无业务后端。
-
-两个账户的购物车独立保存在当前浏览器中，刷新后恢复；退出登录保留购物车。重置演示数据会清空两个账户的购物车并退出登录。
-
-Web 构建产物位于 `build/web/`。
+Web output is written to `build/web/`. The Atlas repository's browser harness is for verification only; it is not needed to run this app.

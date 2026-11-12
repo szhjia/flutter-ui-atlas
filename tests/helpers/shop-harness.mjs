@@ -213,7 +213,14 @@ export async function createShopProject(cli, baseUrl) {
     ignore: await readFile(join(directory, '.gitignore'), 'utf8')
   });
   await execute('git', ['init', '--quiet'], {cwd: directory, env: await shopCliEnvironment()});
-  const result = await runShopCli(cli, directory, ['init', '--yes', '--url', baseUrl, '--ready-text', '登录拾物']);
+  const result = await runShopCli(cli, directory, [
+    'init',
+    '--yes',
+    '--url',
+    baseUrl,
+    '--ready-text',
+    'Sign in to Shiwu'
+  ]);
   assert.equal(result.code, 0, result.output);
   await assertShopSourcesUnchanged(directory);
   await assertShopIgnored(directory, [
@@ -236,19 +243,21 @@ export async function configureShopAccounts(page, baseUrl, {includeFailure = fal
   await page.getByLabel('Flutter Web 地址', {exact: true}).fill(baseUrl);
   await page.getByLabel('认证方式', {exact: true}).selectOption('form');
   await page.getByLabel('登录地址', {exact: true}).fill(baseUrl);
-  await page.getByLabel('账号字段', {exact: true}).fill('登录账号');
-  await page.getByLabel('密码字段', {exact: true}).fill('登录密码');
-  await page.getByLabel('提交按钮', {exact: true}).fill('登录');
+  await page.getByLabel('账号字段', {exact: true}).fill('Username');
+  await page.getByLabel('密码字段', {exact: true}).fill('Password');
+  await page.getByLabel('提交按钮', {exact: true}).fill('Sign in');
   await page.getByLabel('成功判据定位方式', {exact: true}).selectOption('role');
   await page.getByLabel('成功判据语义角色', {exact: true}).fill('heading');
-  await page.getByLabel('成功判据', {exact: true}).fill('首页');
-  await page.getByLabel('失败判据（可选）', {exact: true}).fill('账号或密码错误');
+  await page.getByLabel('成功判据', {exact: true}).fill('Home');
+  await page.getByLabel('失败判据（可选）', {exact: true}).fill('Incorrect username or password');
   await page.getByRole('button', {name: '保存设置', exact: true}).click();
   await page.getByRole('complementary').waitFor({state: 'hidden'});
   for (const account of [
-    {tag: 'user1', name: '商城用户一', username: 'user1', password: '1234.com', passed: true},
-    {tag: 'user2', name: '商城用户二', username: 'user2', password: '1234.com', passed: true},
-    ...(includeFailure ? [{tag: 'wrong', name: '失败示例', username: 'user1', password: 'wrong', passed: false}] : [])
+    {tag: 'user1', name: 'Shop user one', username: 'user1', password: '1234.com', passed: true},
+    {tag: 'user2', name: 'Shop user two', username: 'user2', password: '1234.com', passed: true},
+    ...(includeFailure
+      ? [{tag: 'wrong', name: 'Failed sign-in', username: 'user1', password: 'wrong', passed: false}]
+      : [])
   ]) {
     await page.getByRole('button', {name: '新增角色', exact: true}).first().click();
     await page.getByLabel('Tag', {exact: true}).fill(account.tag);

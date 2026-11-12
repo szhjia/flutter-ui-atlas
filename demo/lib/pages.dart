@@ -71,7 +71,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           const SizedBox(height: 16),
                           const Text(
-                            '拾物',
+                            'Shiwu',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 34,
@@ -83,14 +83,14 @@ class _LoginPageState extends State<LoginPage> {
                           Semantics(
                             header: true,
                             child: const Text(
-                              '登录拾物',
+                              'Sign in to Shiwu',
                               textAlign: TextAlign.center,
                               style: TextStyle(fontSize: 20, color: ink),
                             ),
                           ),
                           const SizedBox(height: 8),
                           const Text(
-                            '发现日常里的好东西',
+                            'Everyday finds, thoughtfully chosen',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: Color(0xFF758079)),
                           ),
@@ -99,12 +99,12 @@ class _LoginPageState extends State<LoginPage> {
                             key: const Key('username'),
                             controller: username,
                             decoration: const InputDecoration(
-                              labelText: '登录账号',
+                              labelText: 'Username',
                             ),
                             textInputAction: TextInputAction.next,
                             validator: (value) =>
                                 value == null || value.trim().isEmpty
-                                ? '请输入账号'
+                                ? 'Enter your username'
                                 : null,
                           ),
                           const SizedBox(height: 16),
@@ -113,11 +113,12 @@ class _LoginPageState extends State<LoginPage> {
                             controller: password,
                             obscureText: true,
                             decoration: const InputDecoration(
-                              labelText: '登录密码',
+                              labelText: 'Password',
                             ),
                             onFieldSubmitted: (_) => submit(),
-                            validator: (value) =>
-                                value == null || value.isEmpty ? '请输入密码' : null,
+                            validator: (value) => value == null || value.isEmpty
+                                ? 'Enter your password'
+                                : null,
                           ),
                           if (failed)
                             Padding(
@@ -125,7 +126,7 @@ class _LoginPageState extends State<LoginPage> {
                               child: Semantics(
                                 liveRegion: true,
                                 child: const Text(
-                                  '账号或密码错误',
+                                  'Incorrect username or password',
                                   style: TextStyle(color: Colors.red),
                                 ),
                               ),
@@ -133,11 +134,11 @@ class _LoginPageState extends State<LoginPage> {
                           const SizedBox(height: 24),
                           FilledButton(
                             onPressed: busy ? null : submit,
-                            child: Text(busy ? '正在登录…' : '登录'),
+                            child: Text(busy ? 'Signing in…' : 'Sign in'),
                           ),
                           const SizedBox(height: 24),
                           const Text(
-                            '演示账户 user1 / user2\n默认密码 1234.com',
+                            'Demo accounts: user1 / user2\nPassword: 1234.com',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
@@ -167,7 +168,7 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ShopScaffold(
     store: store,
-    title: '首页',
+    title: 'Home',
     section: 0,
     child: ListView(
       padding: const EdgeInsets.all(24),
@@ -187,12 +188,12 @@ class HomePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '你好，${store.account}',
+                'Hello, ${store.account}',
                 style: const TextStyle(color: accent),
               ),
               const SizedBox(height: 14),
               const Text(
-                '让日常，\n多一点喜欢。',
+                'Good things,\nfor every day.',
                 style: TextStyle(
                   fontSize: 34,
                   height: 1.4,
@@ -202,21 +203,21 @@ class HomePage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               const Text(
-                '从一只杯子到一盏小灯，\n找到陪伴你的生活好物。',
+                'A cup, a lamp, a little comfort.\nFind something for your day.',
                 style: TextStyle(height: 1.8, color: ink),
               ),
               const SizedBox(height: 22),
               FilledButton.icon(
                 onPressed: () => context.go('/shop'),
                 icon: const Icon(Icons.arrow_forward, size: 18),
-                label: const Text('逛逛商城'),
+                label: const Text('Browse shop'),
               ),
             ],
           ),
         ),
         const SizedBox(height: 28),
         const Text(
-          '今日好物',
+          'Today’s picks',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w600,
@@ -224,7 +225,10 @@ class HomePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        const Text('简单实用，刚刚好。', style: TextStyle(color: Color(0xFF758079))),
+        const Text(
+          'Simple things, made for daily use.',
+          style: TextStyle(color: Color(0xFF758079)),
+        ),
         const SizedBox(height: 18),
         ProductGrid(items: products.take(2).toList()),
       ],
@@ -265,12 +269,12 @@ class CatalogPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ShopScaffold(
     store: store,
-    title: '商城',
+    title: 'Shop',
     child: ListView(
       padding: const EdgeInsets.all(24),
       children: [
         const Text(
-          '为生活挑选',
+          'For everyday living',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w700,
@@ -279,7 +283,7 @@ class CatalogPage extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         const Text(
-          '6 件日常好物 · 慢慢选，慢慢喜欢',
+          'Six everyday essentials. Take a look around.',
           style: TextStyle(color: Color(0xFF758079)),
         ),
         const SizedBox(height: 24),
@@ -336,23 +340,23 @@ class ProductPage extends StatelessWidget {
         FilledButton.icon(
           onPressed: () => store.add(item.id),
           icon: const Icon(Icons.add_shopping_cart_outlined),
-          label: const Text('加入购物车'),
+          label: const Text('Add to cart'),
         ),
         const SizedBox(height: 10),
         OutlinedButton(
           onPressed: () => context.go('/cart'),
-          child: const Text('查看购物车'),
+          child: const Text('View cart'),
         ),
         const SizedBox(height: 16),
         const Text(
-          '演示商品 · 不产生真实交易',
+          'Demo products · No real purchases',
           style: TextStyle(fontSize: 12, color: Color(0xFF758079)),
         ),
       ],
     );
     return ShopScaffold(
       store: store,
-      title: '商品详情',
+      title: 'Product details',
       back: true,
       child: LayoutBuilder(
         builder: (_, bounds) => SingleChildScrollView(
@@ -385,7 +389,7 @@ class CartPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ShopScaffold(
     store: store,
-    title: '购物车',
+    title: 'Cart',
     back: true,
     child: ListenableBuilder(
       listenable: store,
@@ -403,15 +407,15 @@ class CartPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      '购物车还是空的',
+                      'Your cart is empty',
                       style: TextStyle(fontSize: 22, color: ink),
                     ),
                     const SizedBox(height: 12),
-                    const Text('把喜欢的好物带回来吧。'),
+                    const Text('Find something you like.'),
                     const SizedBox(height: 24),
                     FilledButton(
                       onPressed: () => context.go('/shop'),
-                      child: const Text('去逛逛'),
+                      child: const Text('Go shopping'),
                     ),
                   ],
                 ),
@@ -443,12 +447,12 @@ class CartPage extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '共 ${store.quantity} 件商品',
+                          'Items: ${store.quantity}',
                           style: const TextStyle(color: Color(0xFF758079)),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '合计 ${money(store.totalCents)}',
+                          'Total ${money(store.totalCents)}',
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w700,
@@ -457,7 +461,7 @@ class CartPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          '仅演示购物车，不提供结算。',
+                          'Demo cart only. Checkout is not available.',
                           style: TextStyle(
                             fontSize: 12,
                             color: Color(0xFF758079),
@@ -524,24 +528,24 @@ class CartRow extends StatelessWidget {
         Row(
           children: [
             IconButton(
-              tooltip: '减少${product.name}数量',
+              tooltip: 'Decrease ${product.name} quantity',
               onPressed: () => store.change(product.id, -1),
               icon: const Icon(Icons.remove_circle_outline),
             ),
             Semantics(
-              label: '${product.name}数量：$count',
+              label: '${product.name} quantity: $count',
               excludeSemantics: true,
               child: Text('$count'),
             ),
             IconButton(
-              tooltip: '增加${product.name}数量',
+              tooltip: 'Increase ${product.name} quantity',
               onPressed: count >= 99 ? null : () => store.add(product.id),
               icon: const Icon(Icons.add_circle_outline),
             ),
             const Spacer(),
             TextButton(
               onPressed: () => store.remove(product.id),
-              child: Text('删除${product.name}'),
+              child: Text('Remove', semanticsLabel: 'Remove ${product.name}'),
             ),
           ],
         ),
@@ -556,7 +560,7 @@ class ProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ShopScaffold(
     store: store,
-    title: '我的',
+    title: 'Profile',
     section: 2,
     child: ListView(
       padding: const EdgeInsets.all(24),
@@ -577,7 +581,7 @@ class ProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                store.account == 'user1' ? '小拾' : '小物',
+                store.account == 'user1' ? 'Alex' : 'Sam',
                 style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w700,
@@ -585,9 +589,9 @@ class ProfilePage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Text('演示账户 ${store.account}'),
+              Text('Demo account: ${store.account}'),
               const SizedBox(height: 12),
-              const Text('喜欢的东西，慢慢收集。'),
+              const Text('A few things to call your own.'),
             ],
           ),
         ),
@@ -595,8 +599,8 @@ class ProfilePage extends StatelessWidget {
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.shopping_bag_outlined),
-          title: const Text('我的购物车'),
-          subtitle: const Text('每个账户独立保存'),
+          title: const Text('My cart'),
+          subtitle: const Text('Saved per account'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => context.go('/cart'),
         ),
@@ -604,11 +608,11 @@ class ProfilePage extends StatelessWidget {
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 16),
           child: Text(
-            '这是一个没有后端的本地演示应用。\n登录和购物车保存在当前浏览器，退出后购物车仍保留。',
+            'This demo runs locally with no backend.\nYour session and carts are saved in this browser. Signing out keeps your cart.',
             style: TextStyle(height: 1.8, color: Color(0xFF758079)),
           ),
         ),
-        OutlinedButton(onPressed: store.logout, child: const Text('退出登录')),
+        OutlinedButton(onPressed: store.logout, child: const Text('Sign out')),
         const SizedBox(height: 12),
         ResetButton(store: store),
       ],
@@ -622,17 +626,17 @@ class MissingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ShopScaffold(
     store: store,
-    title: '页面不存在',
+    title: 'Page not found',
     back: true,
     child: Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('没有找到这个页面或商品'),
+          const Text('Page or product not found'),
           const SizedBox(height: 24),
           FilledButton(
             onPressed: () => context.go('/shop'),
-            child: const Text('返回商城'),
+            child: const Text('Back to shop'),
           ),
         ],
       ),

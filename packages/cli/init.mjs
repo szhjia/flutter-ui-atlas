@@ -7,23 +7,25 @@ import {ensureAtlasIgnored} from './project-ignore.mjs';
 import {localWebDiscovery} from './local-web.mjs';
 import {findFlutterProject, readConfigFile, resolveProjectConfig, validateAtlasOutput} from './project.mjs';
 
-const guide = artifactDirectory => `# Atlas 接入说明
+const guide = artifactDirectory => `# Atlas project guide
 
-在 Flutter 工程根目录修改 \`.atlas/atlas.yaml\`。\`baseUrl\` 是 Flutter Web 地址，\`port\` 是画布端口。
+Edit \`.atlas/atlas.yaml\` from your Flutter project. \`baseUrl\` is the running Flutter Web URL; \`port\` is the canvas port.
 
-先启动应用的 Flutter Web 开发服务，再从 Flutter 工程运行：
+Start the app with your usual tools, then run from its project directory:
 
 \`\`\`sh
+atlas config
 atlas build
 atlas view
 \`\`\`
 
-打开 \`atlas view\` 打印的地址。截图和采集报告写入 \`.atlas/${artifactDirectory}/\`。重新采集失败时，画布仍可读取上一次成功结果。
+Open the address printed by \`atlas view\`. Screenshots and capture reports are written to \`.atlas/${artifactDirectory}/\`. A failed capture keeps the last successful map.
 
-- 单入口用 \`readyText\` 指定页面上的准确可见文字；留空时只登记候选。
-- 多页采集用 \`screens\` 登记路由及就绪条件，用 \`edges\` 登记实际点击。
-- 复杂项目可通过 \`adapterConfig\` 引用可信的本地 MJS 配置。需要录制时，适配器需提供 \`discovery\`。
-- 整个 \`.atlas/\` 目录仅供本机使用，已在工程根 \`.gitignore\` 中忽略；请勿提交配置、凭据和采集产物。
+- For a single entry screen, set \`readyText\` to its exact visible text. Without it, Atlas records only a candidate.
+- For multiple pages, declare routes and readiness checks in \`screens\`, and real actions in \`edges\`.
+- Use \`atlas config\` to manage authentication and accounts. Keep passwords out of YAML.
+- A trusted local MJS adapter can be referenced with \`adapterConfig\`. Recording requires an adapter with \`discovery\`.
+- The entire \`.atlas/\` directory is local and ignored in the project root \`.gitignore\`. Do not commit configuration, credentials, or generated files.
 `;
 
 async function createOnce(file, contents, created, optional = false) {

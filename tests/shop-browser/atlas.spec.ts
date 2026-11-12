@@ -19,7 +19,11 @@ import {
 const sizes = {phone: {width: 393, height: 852}, pad: {width: 1024, height: 768}};
 
 for (const size of ['phone', 'pad'] as const) {
-  test(`已安装 CLI 标准接入、真实采集、独立窗口操作与失败保图 ${size}`, async ({page, browser, baseURL}, info) => {
+  test(`Installed CLI setup, real captures, live sessions, and preserving maps on failure ${size}`, async ({
+    page,
+    browser,
+    baseURL
+  }, info) => {
     test.setTimeout(600000);
     const cli = await installShopCli();
     const directory = await createShopProject(cli, baseURL!);
@@ -42,10 +46,10 @@ for (const size of ['phone', 'pad'] as const) {
 
       await openShop(normal, baseURL!);
       await loginShop(normal, 'user1');
-      await normal.getByRole('button', {name: '逛逛商城', exact: true}).click();
-      await normal.getByRole('button', {name: '查看日常帆布包', exact: true}).click();
-      await normal.getByRole('button', {name: '加入购物车', exact: true}).click();
-      await expect(normal.getByLabel('购物车数量：1', {exact: true})).toBeVisible();
+      await normal.getByRole('button', {name: 'Browse shop', exact: true}).click();
+      await normal.getByRole('button', {name: 'View Canvas tote', exact: true}).click();
+      await normal.getByRole('button', {name: 'Add to cart', exact: true}).click();
+      await expect(normal.getByLabel('Cart items: 1', {exact: true})).toBeVisible();
       const localBefore = await normal.evaluate(() => JSON.stringify(localStorage));
 
       const build = await runShopCli(cli, directory, size === 'phone' ? ['build'] : ['build', '--profile', size]);
@@ -114,15 +118,15 @@ for (const size of ['phone', 'pad'] as const) {
       );
       expect(firstRecord.screenId).toBe(`${first.id}:detail`);
       expect(firstRecord.viewport).toEqual(sizes[size]);
-      // 端点只从此独立工程的 0600 本机会话文件读取，不送入页面、manifest 或日志。
+      // Read the endpoint only from this project’s private 0600 session file, never from a page, manifest, or log.
       liveBrowser = await chromium.connectOverCDP(firstRecord.endpoint);
       const live = liveBrowser.contexts()[0].pages()[0];
       expect(await live.evaluate(() => ({width: innerWidth, height: innerHeight}))).toEqual(sizes[size]);
-      await expect(live.getByText('当前账户：user1', {exact: true})).toBeVisible();
-      await expect(live.getByRole('heading', {name: '轻量随行杯', exact: true})).toBeVisible();
-      await live.getByRole('button', {name: '加入购物车', exact: true}).click();
-      await live.getByRole('button', {name: '查看购物车', exact: true}).click();
-      await expect(live.getByText('合计 ¥69.00', {exact: true})).toBeVisible();
+      await expect(live.getByText('Account: user1', {exact: true})).toBeVisible();
+      await expect(live.getByRole('heading', {name: 'Travel cup', exact: true})).toBeVisible();
+      await live.getByRole('button', {name: 'Add to cart', exact: true}).click();
+      await live.getByRole('button', {name: 'View cart', exact: true}).click();
+      await expect(live.getByText('Total ¥69.00', {exact: true})).toBeVisible();
       await live.screenshot({path: info.outputPath(`${size}-live.png`)});
 
       await page.locator(`.react-flow__node[data-id="${second.id}:cart-empty"]`).press('Enter');
@@ -137,8 +141,8 @@ for (const size of ['phone', 'pad'] as const) {
       expect(await readdir(join(directory, '.atlas/local/sessions'))).toHaveLength(1);
       liveBrowser = await chromium.connectOverCDP(secondRecord.endpoint);
       const other = liveBrowser.contexts()[0].pages()[0];
-      await expect(other.getByText('当前账户：user2', {exact: true})).toBeVisible();
-      await expect(other.getByText('购物车还是空的', {exact: true})).toBeVisible();
+      await expect(other.getByText('Account: user2', {exact: true})).toBeVisible();
+      await expect(other.getByText('Your cart is empty', {exact: true})).toBeVisible();
       await other.close();
       await expect(page.getByRole('status')).toContainText('实时会话已关闭');
       await expect.poll(async () => (await readdir(join(directory, '.atlas/local/sessions'))).length).toBe(0);
@@ -148,18 +152,18 @@ for (const size of ['phone', 'pad'] as const) {
       expect(await normal.evaluate(() => JSON.stringify(localStorage))).toBe(localBefore);
       await normal.reload();
       await enableShopSemantics(normal);
-      await expect(normal.getByText('当前账户：user1', {exact: true})).toBeVisible();
-      await normal.getByRole('button', {name: '打开购物车', exact: true}).click();
-      await expect(normal.getByText('合计 ¥129.00', {exact: true})).toBeVisible();
+      await expect(normal.getByText('Account: user1', {exact: true})).toBeVisible();
+      await normal.getByRole('button', {name: 'Open cart', exact: true}).click();
+      await expect(normal.getByText('Total ¥129.00', {exact: true})).toBeVisible();
 
-      // 仍有标题、身份与数量，但正文合计判据缺失时，构建必须失败并保留成功结果。
+      // Missing body content must fail the build and preserve the successful map, even when header checks pass.
       const configFile = join(directory, '.atlas/atlas.yaml');
       const broken = parse(await readFile(configFile, 'utf8'));
       broken.timeoutMs = 3000;
       broken.screens = broken.screens.filter((screen: {id: string}) => screen.id === 'cart-full');
       broken.screens[0].roles = ['user1'];
       broken.screens[0].ready.all = broken.screens[0].ready.all.map((ready: {text?: string}) =>
-        ready.text === '合计 ¥69.00' ? {text: '缺失的购物车合计正文'} : ready
+        ready.text === 'Total ¥69.00' ? {text: 'Missing cart total content'} : ready
       );
       broken.edges = [];
       await writeFile(configFile, stringify(broken));
@@ -187,7 +191,9 @@ for (const size of ['phone', 'pad'] as const) {
   });
 }
 
-test('已安装 CLI 配置页真实录入两账户与错误密码，并验证重启恢复和删除', async ({baseURL}, info) => {
+test('Installed CLI configuration saves two accounts and a wrong password, restores after restart, and deletes accounts', async ({
+  baseURL
+}, info) => {
   test.setTimeout(300000);
   const cli = await installShopCli();
   const result = await runShopCli(resolve('examples/verify-config.mjs'), resolve('.'), [baseURL!, cli]);

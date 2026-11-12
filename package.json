@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Flutter 界面图谱：独立画布与可插拔采集工具",
+  "description": "A desktop canvas for Flutter screens, states, and navigation.",
   "engines": {
     "node": ">=22 <26.13"
   },

@@ -1,5 +1,5 @@
 name: shop_demo
-description: 独立 Flutter 商城演示应用。
+description: A standalone Flutter shop demo.
 publish_to: none
 version: 0.1.0+1
 environment:

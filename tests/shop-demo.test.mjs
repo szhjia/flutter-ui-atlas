@@ -8,12 +8,12 @@ const source = new URL('./helpers/shop-catalog.yaml', import.meta.url);
 const roles = ['user1', 'user2'].map((tag, index) => ({
   id: `shop-account-${index + 1}`,
   tag,
-  name: `商城用户${index + 1}`,
+  name: `Shop user ${index + 1}`,
   enabled: true,
   credentials: {username: tag, password: 'unit-test-only'}
 }));
 
-test('普通商城声明展开为 16 个真实状态与 21 项操作，匿名状态共享', async () => {
+test('The shop catalog expands to 16 states and 21 actions with shared anonymous states', async () => {
   const config = parse(await readFile(source, 'utf8'));
   const catalog = expandCatalog({...config, authentication: {type: 'form'}}, roles);
   assert.equal(catalog.screens.length, 16);
@@ -23,25 +23,25 @@ test('普通商城声明展开为 16 个真实状态与 21 项操作，匿名状
   assert(
     config.screens
       .find(screen => screen.id === 'login')
-      .ready.all.some(condition => condition.not?.text === '账号或密码错误')
+      .ready.all.some(condition => condition.not?.text === 'Incorrect username or password')
   );
   for (const role of roles) {
     assert.equal(catalog.screens.filter(screen => screen.id.startsWith(role.id + ':')).length, 7);
     assert(
       catalog.screens
         .find(screen => screen.id === `${role.id}:home`)
-        .ready.all.some(item => item.text === `当前账户：${role.credentials.username}`)
+        .ready.all.some(item => item.text === `Account: ${role.credentials.username}`)
     );
     const login = catalog.edges.find(edge => edge.source === '@anonymous:login' && edge.target === `${role.id}:home`);
-    assert.deepEqual(login.steps, [], '登录使用配置认证，不在目录中填入密码');
+    assert.deepEqual(login.steps, [], 'Sign-in uses configured authentication, keeping passwords out of the catalog');
     const logout = catalog.edges.find(edge => edge.source === `${role.id}:me` && edge.target === '@anonymous:login');
-    assert.deepEqual(logout.steps, [{action: 'click', target: {role: 'button', name: '退出登录'}}]);
+    assert.deepEqual(logout.steps, [{action: 'click', target: {role: 'button', name: 'Sign out'}}]);
   }
   const ids = new Set(catalog.screens.map(screen => screen.id));
   assert(catalog.edges.every(edge => ids.has(edge.source) && ids.has(edge.target)));
 });
 
-test('phone/pad 通过标准 YAML profiles 声明，目录不携带凭据和预览注入', async () => {
+test('Phone and pad use standard YAML profiles without passwords or preview injection', async () => {
   const text = await readFile(source, 'utf8');
   const config = parse(text);
   assert.deepEqual(
@@ -60,21 +60,23 @@ test('phone/pad 通过标准 YAML profiles 声明，目录不携带凭据和预�
   assert.deepEqual([...actions].sort(), ['click', 'fill', 'goto', 'wait']);
 });
 
-test('购物车和商品详情就绪要求正文、身份与数量，不能只看标题或顶部徽标', async () => {
+test('Cart and product readiness checks include content, identity, and quantity', async () => {
   const config = parse(await readFile(source, 'utf8'));
   const find = id => config.screens.find(screen => screen.id === id).ready.all;
-  assert(find('cart-full').some(item => item.text === '合计 ¥69.00'));
-  assert(find('cart-full').some(item => item.role === 'group' && item.name === '轻量随行杯 ¥69.00 轻量随行杯数量：1'));
-  assert(find('cart-empty').some(item => item.text === '购物车还是空的'));
-  assert(find('detail').some(item => item.role === 'heading' && item.name === '轻量随行杯'));
+  assert(find('cart-full').some(item => item.text === 'Total ¥69.00'));
+  assert(
+    find('cart-full').some(item => item.role === 'group' && item.name === 'Travel cup ¥69.00 Travel cup quantity: 1')
+  );
+  assert(find('cart-empty').some(item => item.text === 'Your cart is empty'));
+  assert(find('detail').some(item => item.role === 'heading' && item.name === 'Travel cup'));
   assert(find('detail').some(item => item.text === '¥69.00'));
   for (const screen of config.screens.filter(screen => !screen.roles?.includes('@anonymous'))) {
-    assert(screen.ready.all.some(item => item.text === '当前账户：{{role.username}}'));
-    assert(screen.ready.all.some(item => /^购物车数量：[01]$/.test(item.name ?? '')));
+    assert(screen.ready.all.some(item => item.text === 'Account: {{role.username}}'));
+    assert(screen.ready.all.some(item => /^Cart items: [01]$/.test(item.name ?? '')));
   }
 });
 
-test('自适应导航声明两种真实语义定位器，保留实际点击', async () => {
+test('Responsive navigation declares both semantic locators and uses real clicks', async () => {
   const config = parse(await readFile(source, 'utf8'));
   const profile = config.edges.find(edge => edge.id === 'profile');
   assert.deepEqual(profile.steps, [
@@ -82,8 +84,8 @@ test('自适应导航声明两种真实语义定位器，保留实际点击', as
       action: 'click',
       target: {
         any: [
-          {role: 'tab', name: '我的'},
-          {role: 'button', name: '我的 Tab 3 of 3'}
+          {role: 'tab', name: 'Profile'},
+          {role: 'button', name: 'Profile Tab 3 of 3'}
         ]
       }
     }

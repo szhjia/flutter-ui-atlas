@@ -74,7 +74,7 @@ class _ShopAppState extends State<ShopApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(
-    title: '拾物 · 商城 Demo',
+    title: 'Shiwu · Shop Demo',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
@@ -138,7 +138,7 @@ class ShopScaffold extends StatelessWidget {
             automaticallyImplyLeading: false,
             leading: back
                 ? IconButton(
-                    tooltip: '返回商城',
+                    tooltip: 'Back to shop',
                     icon: const Icon(Icons.arrow_back),
                     onPressed: () => context.go('/shop'),
                   )
@@ -146,7 +146,7 @@ class ShopScaffold extends StatelessWidget {
             title: Semantics(header: true, child: Text(title)),
             actions: [
               Semantics(
-                label: '当前账户：${store.account}',
+                label: 'Account: ${store.account}',
                 excludeSemantics: true,
                 child: Text(
                   store.account ?? '',
@@ -155,11 +155,11 @@ class ShopScaffold extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Semantics(
-                label: '购物车数量：${store.quantity}',
+                label: 'Cart items: ${store.quantity}',
                 container: true,
                 explicitChildNodes: true,
                 child: IconButton(
-                  tooltip: '打开购物车',
+                  tooltip: 'Open cart',
                   onPressed: () => context.go('/cart'),
                   icon: ExcludeSemantics(
                     child: Badge(
@@ -187,15 +187,15 @@ class ShopScaffold extends StatelessWidget {
                   destinations: const [
                     NavigationRailDestination(
                       icon: Icon(Icons.home_outlined),
-                      label: Text('首页'),
+                      label: Text('Home'),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.storefront_outlined),
-                      label: Text('商城'),
+                      label: Text('Shop'),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.person_outline),
-                      label: Text('我的'),
+                      label: Text('Profile'),
                     ),
                   ],
                 ),
@@ -219,15 +219,15 @@ class ShopScaffold extends StatelessWidget {
                   destinations: const [
                     NavigationDestination(
                       icon: Icon(Icons.home_outlined),
-                      label: '首页',
+                      label: 'Home',
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.storefront_outlined),
-                      label: '商城',
+                      label: 'Shop',
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.person_outline),
-                      label: '我的',
+                      label: 'Profile',
                     ),
                   ],
                 ),
@@ -254,7 +254,7 @@ class StorageNotice extends StatelessWidget {
                 Text(store.warning!),
                 TextButton(
                   onPressed: store.retrySave,
-                  child: const Text('重试保存'),
+                  child: const Text('Retry save'),
                 ),
               ],
             ),
@@ -268,21 +268,23 @@ class ResetButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TextButton.icon(
     icon: const Icon(Icons.restart_alt),
-    label: const Text('重置演示数据'),
+    label: const Text('Reset demo data'),
     onPressed: () async {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('重置演示数据？'),
-          content: const Text('将清空两个账户的购物车并退出登录。商品和演示账户会保留。'),
+          title: const Text('Reset demo data?'),
+          content: const Text(
+            'This clears both carts and signs you out. Products and demo accounts stay available.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('确认重置'),
+              child: const Text('Reset'),
             ),
           ],
         ),
@@ -323,7 +325,7 @@ class ProductTile extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     key: Key('product-${product.id}'),
     button: true,
-    label: '查看${product.name}',
+    label: 'View ${product.name}',
     excludeSemantics: true,
     child: InkWell(
       onTap: () => context.go('/products/${product.id}'),

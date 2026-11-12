@@ -1,5 +1,5 @@
-# 普通 Flutter 应用的声明式验收目录；有效凭据由配置页录入本机。
-title: 拾物商城验收
+# Declarative catalog for a regular Flutter app; enter valid passwords through the local configuration page.
+title: Shiwu shop verification
 baseUrl: http://127.0.0.1:60212/
 routeMode: hash
 output: generated
@@ -24,34 +24,34 @@ sourceFiles:
   - ../web/index.html
 screens:
   - id: login
-    title: 登录拾物
+    title: Sign in to Shiwu
     roles:
       - '@anonymous'
     route: /login
-    group: 登录
-    state: 默认状态
+    group: Sign in
+    state: Default
     prepare:
       - action: goto
         url: /#/login
     ready:
       all:
         - not:
-            text: 账号或密码错误
+            text: Incorrect username or password
         - role: heading
-          name: 登录拾物
+          name: Sign in to Shiwu
         - kind: label
-          name: 登录账号
+          name: Username
         - kind: label
-          name: 登录密码
+          name: Password
         - role: button
-          name: 登录
+          name: Sign in
   - id: login-error
-    title: 登录拾物
+    title: Sign in to Shiwu
     roles:
       - '@anonymous'
     route: /login
-    group: 登录
-    state: 密码错误
+    group: Sign in
+    state: Wrong password
     prepare:
       - action: goto
         url: /#/login
@@ -59,56 +59,56 @@ screens:
         ready:
           all:
             - kind: label
-              name: 登录账号
+              name: Username
             - kind: label
-              name: 登录密码
+              name: Password
       - action: fill
         target:
           kind: label
-          name: 登录账号
+          name: Username
         value: user1
       - action: fill
         target:
           kind: label
-          name: 登录密码
+          name: Password
         value: wrong
       - action: click
         target:
           role: button
-          name: 登录
+          name: Sign in
     ready:
       all:
         - role: heading
-          name: 登录拾物
-        - text: 账号或密码错误
+          name: Sign in to Shiwu
+        - text: Incorrect username or password
         - kind: label
-          name: 登录账号
+          name: Username
         - kind: label
-          name: 登录密码
+          name: Password
   - id: home
-    title: 首页
+    title: Home
     route: /home
-    group: 商城应用
-    state: 默认状态
+    group: Shop app
+    state: Default
     prepare:
       - action: goto
         url: /#/home
     ready:
       all:
         - role: heading
-          name: 首页
-        - text: 当前账户：{{role.username}}
+          name: Home
+        - text: 'Account: {{role.username}}'
         - kind: label
-          name: 购物车数量：0
+          name: 'Cart items: 0'
         - text: SHIWU / EVERYDAY FINDS
-        - text: 简单实用，刚刚好。
+        - text: Simple things, made for daily use.
         - role: button
-          name: 逛逛商城
+          name: Browse shop
   - id: shop
-    title: 商城
+    title: Shop
     route: /shop
-    group: 商城应用
-    state: 默认状态
+    group: Shop app
+    state: Default
     prepare:
       - action: goto
         url: /#/home
@@ -116,35 +116,35 @@ screens:
         ready:
           all:
             - role: button
-              name: 逛逛商城
+              name: Browse shop
       - action: click
         target:
           role: button
-          name: 逛逛商城
+          name: Browse shop
     ready:
       all:
         - role: heading
-          name: 商城
-        - text: 当前账户：{{role.username}}
+          name: Shop
+        - text: 'Account: {{role.username}}'
         - kind: label
-          name: 购物车数量：0
+          name: 'Cart items: 0'
         - role: button
-          name: 查看轻量随行杯
+          name: View Travel cup
         - role: button
-          name: 查看日常帆布包
+          name: View Canvas tote
         - role: button
-          name: 查看暖光小台灯
+          name: View Desk lamp
         - role: button
-          name: 查看方格记录本
+          name: View Grid notebook
         - role: button
-          name: 查看桌面小音箱
+          name: View Desk speaker
         - role: button
-          name: 查看柔软针织毯
+          name: View Knit blanket
   - id: detail
-    title: 商品详情
+    title: Product details
     route: /products/cup
-    group: 商城应用
-    state: 加购前
+    group: Shop app
+    state: Before adding
     prepare:
       - action: goto
         url: /#/shop
@@ -152,30 +152,30 @@ screens:
         ready:
           all:
             - role: heading
-              name: 商城
+              name: Shop
             - role: button
-              name: 查看轻量随行杯
+              name: View Travel cup
       - action: click
         target:
           role: button
-          name: 查看轻量随行杯
+          name: View Travel cup
     ready:
       all:
         - role: heading
-          name: 商品详情
-        - text: 当前账户：{{role.username}}
+          name: Product details
+        - text: 'Account: {{role.username}}'
         - kind: label
-          name: 购物车数量：0
+          name: 'Cart items: 0'
         - role: heading
-          name: 轻量随行杯
+          name: Travel cup
         - text: ¥69.00
         - role: button
-          name: 加入购物车
+          name: Add to cart
   - id: detail-added
-    title: 商品详情
+    title: Product details
     route: /products/cup
-    group: 商城应用
-    state: 加购后
+    group: Shop app
+    state: After adding
     prepare:
       - action: goto
         url: /#/shop
@@ -183,57 +183,57 @@ screens:
         ready:
           all:
             - role: heading
-              name: 商城
+              name: Shop
             - role: button
-              name: 查看轻量随行杯
+              name: View Travel cup
       - action: click
         target:
           role: button
-          name: 查看轻量随行杯
+          name: View Travel cup
       - action: wait
         ready:
           all:
             - role: heading
-              name: 轻量随行杯
+              name: Travel cup
       - action: click
         target:
           role: button
-          name: 加入购物车
+          name: Add to cart
     ready:
       all:
         - role: heading
-          name: 商品详情
-        - text: 当前账户：{{role.username}}
+          name: Product details
+        - text: 'Account: {{role.username}}'
         - kind: label
-          name: 购物车数量：1
+          name: 'Cart items: 1'
         - role: heading
-          name: 轻量随行杯
+          name: Travel cup
         - text: ¥69.00
         - role: button
-          name: 查看购物车
+          name: View cart
   - id: cart-empty
-    title: 购物车
+    title: Cart
     route: /cart
-    group: 商城应用
-    state: 空购物车
+    group: Shop app
+    state: Empty cart
     prepare:
       - action: goto
         url: /#/cart
     ready:
       all:
         - role: heading
-          name: 购物车
-        - text: 当前账户：{{role.username}}
+          name: Cart
+        - text: 'Account: {{role.username}}'
         - kind: label
-          name: 购物车数量：0
-        - text: 购物车还是空的
+          name: 'Cart items: 0'
+        - text: Your cart is empty
         - role: button
-          name: 去逛逛
+          name: Go shopping
   - id: cart-full
-    title: 购物车
+    title: Cart
     route: /cart
-    group: 商城应用
-    state: 已有商品
+    group: Shop app
+    state: With items
     prepare:
       - action: goto
         url: /#/shop
@@ -241,166 +241,166 @@ screens:
         ready:
           all:
             - role: heading
-              name: 商城
+              name: Shop
             - role: button
-              name: 查看轻量随行杯
+              name: View Travel cup
       - action: click
         target:
           role: button
-          name: 查看轻量随行杯
+          name: View Travel cup
       - action: wait
         ready:
           all:
             - role: heading
-              name: 轻量随行杯
+              name: Travel cup
       - action: click
         target:
           role: button
-          name: 加入购物车
+          name: Add to cart
       - action: click
         target:
           role: button
-          name: 查看购物车
+          name: View cart
     ready:
       all:
         - role: heading
-          name: 购物车
-        - text: 当前账户：{{role.username}}
+          name: Cart
+        - text: 'Account: {{role.username}}'
         - kind: label
-          name: 购物车数量：1
+          name: 'Cart items: 1'
         - role: group
-          name: 轻量随行杯 ¥69.00 轻量随行杯数量：1
-        - text: 合计 ¥69.00
+          name: 'Travel cup ¥69.00 Travel cup quantity: 1'
+        - text: Total ¥69.00
         - role: button
-          name: 删除轻量随行杯
+          name: Remove Travel cup
   - id: me
-    title: 我的
+    title: Profile
     route: /me
-    group: 商城应用
-    state: 默认状态
+    group: Shop app
+    state: Default
     prepare:
       - action: goto
         url: /#/me
     ready:
       all:
         - role: heading
-          name: 我的
-        - text: 当前账户：{{role.username}}
+          name: Profile
+        - text: 'Account: {{role.username}}'
         - kind: label
-          name: 购物车数量：0
+          name: 'Cart items: 0'
         - role: button
-          name: 我的购物车 每个账户独立保存
-        - text: 这是一个没有后端的本地演示应用。 登录和购物车保存在当前浏览器，退出后购物车仍保留。
+          name: My cart Saved per account
+        - text: This demo runs locally with no backend. Your session and carts are saved in this browser. Signing out keeps your cart.
         - role: button
-          name: 退出登录
+          name: Sign out
 edges:
   - id: wrong-password
     source: login
     target: login-error
     roles:
       - '@anonymous'
-    action: 错误密码登录
+    action: Sign in with wrong password
     steps:
       - action: fill
         target:
           kind: label
-          name: 登录账号
+          name: Username
         value: user1
       - action: fill
         target:
           kind: label
-          name: 登录密码
+          name: Password
         value: wrong
       - action: click
         target:
           role: button
-          name: 登录
+          name: Sign in
   - id: login
     source: login
     target: home
-    action: 登录账户
+    action: Sign in
     steps: []
   - id: browse
     source: home
     target: shop
-    action: 逛逛商城
+    action: Browse shop
     steps:
       - action: click
         target:
           role: button
-          name: 逛逛商城
+          name: Browse shop
   - id: detail
     source: shop
     target: detail
-    action: 查看轻量随行杯
+    action: View Travel cup
     steps:
       - action: click
         target:
           role: button
-          name: 查看轻量随行杯
+          name: View Travel cup
   - id: add
     source: detail
     target: detail-added
-    action: 加入购物车
+    action: Add to cart
     steps:
       - action: click
         target:
           role: button
-          name: 加入购物车
+          name: Add to cart
   - id: view-cart
     source: detail-added
     target: cart-full
-    action: 查看购物车
+    action: View cart
     steps:
       - action: click
         target:
           role: button
-          name: 查看购物车
+          name: View cart
   - id: open-empty-cart
     source: shop
     target: cart-empty
-    action: 打开购物车
+    action: Open cart
     steps:
       - action: click
         target:
           role: button
-          name: 打开购物车
+          name: Open cart
   - id: remove
     source: cart-full
     target: cart-empty
-    action: 删除轻量随行杯
+    action: Remove Travel cup
     steps:
       - action: click
         target:
           role: button
-          name: 删除轻量随行杯
+          name: Remove Travel cup
   - id: continue-shopping
     source: cart-empty
     target: shop
-    action: 去逛逛
+    action: Go shopping
     steps:
       - action: click
         target:
           role: button
-          name: 去逛逛
+          name: Go shopping
   - id: profile
     source: home
     target: me
-    action: 我的
+    action: Profile
     steps:
       - action: click
         target:
           any:
             - role: tab
-              name: 我的
+              name: Profile
             - role: button
-              name: 我的 Tab 3 of 3
+              name: Profile Tab 3 of 3
   - id: logout
     source: me
     target: login
-    action: 退出登录
+    action: Sign out
     steps:
       - action: click
         target:
           role: button
-          name: 退出登录
+          name: Sign out

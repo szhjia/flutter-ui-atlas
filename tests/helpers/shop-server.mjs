@@ -51,7 +51,7 @@ export async function serveShop({port = 60210, directory = root} = {}) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.argv[2] ?? 60210);
   const server = await serveShop({port, directory: process.argv[3] ?? root});
-  console.log(`商城 Demo：http://127.0.0.1:${server.address().port}/`);
+  console.log(`Shop demo: http://127.0.0.1:${server.address().port}/`);
   const stop = () => server.close(() => process.exit(0));
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
