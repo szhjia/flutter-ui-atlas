@@ -1,25 +1,25 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": [
-      "vite/client",
-      "node"
-    ],
+    "types": ["vite/client", "node"],
     "allowJs": true
   },
   "include": [
     "src",
-    "packages/viewer/src", "packages/capture/adapter.ts", "packages/config-ui/src", "packages/cli/config-contract.ts",
-    "tests/canvas", "tests/browser", "tests/config"
+    "packages/viewer/src",
+    "packages/capture/adapter.ts",
+    "packages/config-ui/src",
+    "packages/cli/config-contract.ts",
+    "tests/canvas",
+    "tests/browser",
+    "tests/config",
+    "tests/shop-browser"
   ]
 }

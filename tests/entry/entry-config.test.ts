@@ -17,7 +17,7 @@ it('空文本回落默认配置', () => {
   const result = parseEntryConfig(null);
   expect(result.error).toBe(null);
   expect(result.config?.artifactPaths).toEqual(['/generated']);
-  expect(result.config?.layoutKey).toBe('atlas-example:phone-393x852:v1');
+  expect(result.config?.layoutKey).toBe('atlas-default:phone-393x852:v1');
   expect(result.config?.preview).toEqual({routeMode: 'hash', localOnly: true});
 });
 

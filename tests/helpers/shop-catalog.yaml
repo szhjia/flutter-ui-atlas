@@ -1,0 +1,406 @@
+# 普通 Flutter 应用的声明式验收目录；有效凭据由配置页录入本机。
+title: 拾物商城验收
+baseUrl: http://127.0.0.1:60212/
+routeMode: hash
+output: generated
+port: 60200
+profiles:
+  phone:
+    width: 393
+    height: 852
+  pad:
+    width: 1024
+    height: 768
+timeoutMs: 15000
+requireObservedEdges: true
+sourceFiles:
+  - ../lib/main.dart
+  - ../lib/app.dart
+  - ../lib/pages.dart
+  - ../lib/store.dart
+  - ../lib/products.dart
+  - ../pubspec.yaml
+  - ../pubspec.lock
+  - ../web/index.html
+screens:
+  - id: login
+    title: 登录拾物
+    roles:
+      - '@anonymous'
+    route: /login
+    group: 登录
+    state: 默认状态
+    prepare:
+      - action: goto
+        url: /#/login
+    ready:
+      all:
+        - not:
+            text: 账号或密码错误
+        - role: heading
+          name: 登录拾物
+        - kind: label
+          name: 登录账号
+        - kind: label
+          name: 登录密码
+        - role: button
+          name: 登录
+  - id: login-error
+    title: 登录拾物
+    roles:
+      - '@anonymous'
+    route: /login
+    group: 登录
+    state: 密码错误
+    prepare:
+      - action: goto
+        url: /#/login
+      - action: wait
+        ready:
+          all:
+            - kind: label
+              name: 登录账号
+            - kind: label
+              name: 登录密码
+      - action: fill
+        target:
+          kind: label
+          name: 登录账号
+        value: user1
+      - action: fill
+        target:
+          kind: label
+          name: 登录密码
+        value: wrong
+      - action: click
+        target:
+          role: button
+          name: 登录
+    ready:
+      all:
+        - role: heading
+          name: 登录拾物
+        - text: 账号或密码错误
+        - kind: label
+          name: 登录账号
+        - kind: label
+          name: 登录密码
+  - id: home
+    title: 首页
+    route: /home
+    group: 商城应用
+    state: 默认状态
+    prepare:
+      - action: goto
+        url: /#/home
+    ready:
+      all:
+        - role: heading
+          name: 首页
+        - text: 当前账户：{{role.username}}
+        - kind: label
+          name: 购物车数量：0
+        - text: SHIWU / EVERYDAY FINDS
+        - text: 简单实用，刚刚好。
+        - role: button
+          name: 逛逛商城
+  - id: shop
+    title: 商城
+    route: /shop
+    group: 商城应用
+    state: 默认状态
+    prepare:
+      - action: goto
+        url: /#/home
+      - action: wait
+        ready:
+          all:
+            - role: button
+              name: 逛逛商城
+      - action: click
+        target:
+          role: button
+          name: 逛逛商城
+    ready:
+      all:
+        - role: heading
+          name: 商城
+        - text: 当前账户：{{role.username}}
+        - kind: label
+          name: 购物车数量：0
+        - role: button
+          name: 查看轻量随行杯
+        - role: button
+          name: 查看日常帆布包
+        - role: button
+          name: 查看暖光小台灯
+        - role: button
+          name: 查看方格记录本
+        - role: button
+          name: 查看桌面小音箱
+        - role: button
+          name: 查看柔软针织毯
+  - id: detail
+    title: 商品详情
+    route: /products/cup
+    group: 商城应用
+    state: 加购前
+    prepare:
+      - action: goto
+        url: /#/shop
+      - action: wait
+        ready:
+          all:
+            - role: heading
+              name: 商城
+            - role: button
+              name: 查看轻量随行杯
+      - action: click
+        target:
+          role: button
+          name: 查看轻量随行杯
+    ready:
+      all:
+        - role: heading
+          name: 商品详情
+        - text: 当前账户：{{role.username}}
+        - kind: label
+          name: 购物车数量：0
+        - role: heading
+          name: 轻量随行杯
+        - text: ¥69.00
+        - role: button
+          name: 加入购物车
+  - id: detail-added
+    title: 商品详情
+    route: /products/cup
+    group: 商城应用
+    state: 加购后
+    prepare:
+      - action: goto
+        url: /#/shop
+      - action: wait
+        ready:
+          all:
+            - role: heading
+              name: 商城
+            - role: button
+              name: 查看轻量随行杯
+      - action: click
+        target:
+          role: button
+          name: 查看轻量随行杯
+      - action: wait
+        ready:
+          all:
+            - role: heading
+              name: 轻量随行杯
+      - action: click
+        target:
+          role: button
+          name: 加入购物车
+    ready:
+      all:
+        - role: heading
+          name: 商品详情
+        - text: 当前账户：{{role.username}}
+        - kind: label
+          name: 购物车数量：1
+        - role: heading
+          name: 轻量随行杯
+        - text: ¥69.00
+        - role: button
+          name: 查看购物车
+  - id: cart-empty
+    title: 购物车
+    route: /cart
+    group: 商城应用
+    state: 空购物车
+    prepare:
+      - action: goto
+        url: /#/cart
+    ready:
+      all:
+        - role: heading
+          name: 购物车
+        - text: 当前账户：{{role.username}}
+        - kind: label
+          name: 购物车数量：0
+        - text: 购物车还是空的
+        - role: button
+          name: 去逛逛
+  - id: cart-full
+    title: 购物车
+    route: /cart
+    group: 商城应用
+    state: 已有商品
+    prepare:
+      - action: goto
+        url: /#/shop
+      - action: wait
+        ready:
+          all:
+            - role: heading
+              name: 商城
+            - role: button
+              name: 查看轻量随行杯
+      - action: click
+        target:
+          role: button
+          name: 查看轻量随行杯
+      - action: wait
+        ready:
+          all:
+            - role: heading
+              name: 轻量随行杯
+      - action: click
+        target:
+          role: button
+          name: 加入购物车
+      - action: click
+        target:
+          role: button
+          name: 查看购物车
+    ready:
+      all:
+        - role: heading
+          name: 购物车
+        - text: 当前账户：{{role.username}}
+        - kind: label
+          name: 购物车数量：1
+        - role: group
+          name: 轻量随行杯 ¥69.00 轻量随行杯数量：1
+        - text: 合计 ¥69.00
+        - role: button
+          name: 删除轻量随行杯
+  - id: me
+    title: 我的
+    route: /me
+    group: 商城应用
+    state: 默认状态
+    prepare:
+      - action: goto
+        url: /#/me
+    ready:
+      all:
+        - role: heading
+          name: 我的
+        - text: 当前账户：{{role.username}}
+        - kind: label
+          name: 购物车数量：0
+        - role: button
+          name: 我的购物车 每个账户独立保存
+        - text: 这是一个没有后端的本地演示应用。 登录和购物车保存在当前浏览器，退出后购物车仍保留。
+        - role: button
+          name: 退出登录
+edges:
+  - id: wrong-password
+    source: login
+    target: login-error
+    roles:
+      - '@anonymous'
+    action: 错误密码登录
+    steps:
+      - action: fill
+        target:
+          kind: label
+          name: 登录账号
+        value: user1
+      - action: fill
+        target:
+          kind: label
+          name: 登录密码
+        value: wrong
+      - action: click
+        target:
+          role: button
+          name: 登录
+  - id: login
+    source: login
+    target: home
+    action: 登录账户
+    steps: []
+  - id: browse
+    source: home
+    target: shop
+    action: 逛逛商城
+    steps:
+      - action: click
+        target:
+          role: button
+          name: 逛逛商城
+  - id: detail
+    source: shop
+    target: detail
+    action: 查看轻量随行杯
+    steps:
+      - action: click
+        target:
+          role: button
+          name: 查看轻量随行杯
+  - id: add
+    source: detail
+    target: detail-added
+    action: 加入购物车
+    steps:
+      - action: click
+        target:
+          role: button
+          name: 加入购物车
+  - id: view-cart
+    source: detail-added
+    target: cart-full
+    action: 查看购物车
+    steps:
+      - action: click
+        target:
+          role: button
+          name: 查看购物车
+  - id: open-empty-cart
+    source: shop
+    target: cart-empty
+    action: 打开购物车
+    steps:
+      - action: click
+        target:
+          role: button
+          name: 打开购物车
+  - id: remove
+    source: cart-full
+    target: cart-empty
+    action: 删除轻量随行杯
+    steps:
+      - action: click
+        target:
+          role: button
+          name: 删除轻量随行杯
+  - id: continue-shopping
+    source: cart-empty
+    target: shop
+    action: 去逛逛
+    steps:
+      - action: click
+        target:
+          role: button
+          name: 去逛逛
+  - id: profile
+    source: home
+    target: me
+    action: 我的
+    steps:
+      - action: click
+        target:
+          any:
+            - role: tab
+              name: 我的
+            - role: button
+              name: 我的 Tab 3 of 3
+  - id: logout
+    source: me
+    target: login
+    action: 退出登录
+    steps:
+      - action: click
+        target:
+          role: button
+          name: 退出登录

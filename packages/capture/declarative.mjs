@@ -29,9 +29,41 @@ export function sourceFingerprintForFiles(files, directory) {
   if (!files.length) return undefined;
   return async () => {
     const hash = createHash('sha256');
-    for (const file of files) hash.update(file).update('\0').update(await readFile(resolve(directory, file))).update('\0');
+    for (const file of files)
+      hash
+        .update(file)
+        .update('\0')
+        .update(await readFile(resolve(directory, file)))
+        .update('\0');
     return hash.digest('hex');
   };
+}
+
+export function validateRoutePrefix(value) {
+  let routePrefix = '';
+  const config = {routePrefix: value};
+  if (config.routePrefix !== undefined) {
+    // URL 规范化会解码 %2e 等形态并折叠点段，点段检查须在解码后的值上进行。
+    let decodedPrefix = config.routePrefix;
+    if (typeof config.routePrefix === 'string') {
+      try {
+        decodedPrefix = decodeURIComponent(config.routePrefix);
+      } catch {
+        throw Error('routePrefix 包含无效的 URL 编码');
+      }
+    }
+    if (
+      typeof config.routePrefix !== 'string' ||
+      !/^\/(?!\/)[^?#]*$/.test(config.routePrefix) ||
+      config.routePrefix.endsWith('/') ||
+      /(?:^|\/)\.{1,2}(?:\/|$)/.test(decodedPrefix) ||
+      /[\\\u0000-\u001f\u007f]/.test(decodedPrefix)
+    ) {
+      throw Error('routePrefix 必须是以 / 开头且不以 / 结尾、不含点段、反斜杠与控制字符的路径前缀');
+    }
+    routePrefix = config.routePrefix;
+  }
+  return routePrefix;
 }
 
 export function declarativeConfig(config, configDirectory) {
@@ -44,31 +76,20 @@ export function declarativeConfig(config, configDirectory) {
   const base = webUrl(config.baseUrl);
   assertLoopback(base, {
     allowRemote: config.allowRemoteUrls === true,
-    message: 'baseUrl 必须是本地回环地址；如需采集局域网或远程开发服务，在配置中设置 allowRemoteUrls: true。',
+    message: 'baseUrl 必须是本地回环地址；如需采集局域网或远程开发服务，在配置中设置 allowRemoteUrls: true。'
   });
   const mode = config.routeMode ?? 'hash';
   if (mode !== 'hash' && mode !== 'pathname') throw Error('routeMode 必须是 hash 或 pathname');
-  let routePrefix = '';
-  if (config.routePrefix !== undefined) {
-    // URL 规范化会解码 %2e 等形态并折叠点段，点段检查须在解码后的值上进行。
-    let decodedPrefix = config.routePrefix;
-    if (typeof config.routePrefix === 'string') {
-      try { decodedPrefix = decodeURIComponent(config.routePrefix); }
-      catch { throw Error('routePrefix 包含无效的 URL 编码'); }
-    }
-    if (typeof config.routePrefix !== 'string' || !/^\/(?!\/)[^?#]*$/.test(config.routePrefix) ||
-        config.routePrefix.endsWith('/') || /(?:^|\/)\.{1,2}(?:\/|$)/.test(decodedPrefix) ||
-        /[\\\u0000-\u001f\u007f]/.test(decodedPrefix)) {
-      throw Error('routePrefix 必须是以 / 开头且不以 / 结尾、不含点段、反斜杠与控制字符的路径前缀');
-    }
-    routePrefix = config.routePrefix;
-  }
+  const routePrefix = validateRoutePrefix(config.routePrefix);
   function routeOf(url) {
     return mode === 'hash' ? url.hash.slice(1).split('?')[0] || '/' : url.pathname;
   }
   function matchesLocation(url, target) {
-    return url.origin === base.origin && routeOf(url) === target.route &&
-      (mode !== 'hash' || url.pathname === new URL(target.entry).pathname);
+    return (
+      url.origin === base.origin &&
+      routeOf(url) === target.route &&
+      (mode !== 'hash' || url.pathname === new URL(target.entry).pathname)
+    );
   }
   const screens = config.screens.map(spec => {
     checkLocator(spec.ready, `页面 ${spec.id} 的 ready`);
@@ -87,8 +108,12 @@ export function declarativeConfig(config, configDirectory) {
       }
     }
     return {
-      ...spec, route: routeOf(url), entry: url.href,
-      role: spec.role ?? '默认', group: spec.group ?? '页面', state: spec.state ?? '默认状态',
+      ...spec,
+      route: routeOf(url),
+      entry: url.href,
+      role: spec.role ?? '默认',
+      group: spec.group ?? '页面',
+      state: spec.state ?? '默认状态'
     };
   });
   const edges = (config.edges ?? []).map(edge => {
@@ -115,42 +140,53 @@ export function declarativeConfig(config, configDirectory) {
           });
           await page.goto(screen.entry, {waitUntil: 'domcontentloaded'});
           return {
-            page, errors, close: () => context.close(),
+            page,
+            errors,
+            close: () => context.close(),
             currentRoute: async () => {
               const url = new URL(page.url());
               return url.origin === base.origin ? routeOf(url) : url.href;
             },
             async matchesState(target) {
               const content = locator(page, target.ready).filter({visible: true}).first();
-              return matchesLocation(new URL(page.url()), target) && await content.isVisible() &&
-                matchesLocation(new URL(page.url()), target);
+              return (
+                matchesLocation(new URL(page.url()), target) &&
+                (await content.isVisible()) &&
+                matchesLocation(new URL(page.url()), target)
+              );
             },
             async ready(target) {
               const deadline = Date.now() + timeout;
               const remaining = () => Math.max(1, deadline - Date.now());
               const content = locator(page, target.ready).filter({visible: true}).first();
-              const enable = page.locator('flt-semantics-placeholder')
+              const enable = page
+                .locator('flt-semantics-placeholder')
                 .and(page.getByRole('button', {name: 'Enable accessibility', exact: true}));
               await content.or(enable).filter({visible: true}).first().waitFor({state: 'visible', timeout});
-              if (!await content.isVisible() && await enable.isVisible()) {
+              if (!(await content.isVisible()) && (await enable.isVisible())) {
                 // Flutter 的无障碍入口在视口外，辅助技术通过 click 事件激活。
                 await enable.dispatchEvent('click', {}, {timeout: remaining()});
               }
               try {
-                await page.waitForURL(url => matchesLocation(url, target), {timeout: remaining(), waitUntil: 'domcontentloaded'});
+                await page.waitForURL(url => matchesLocation(url, target), {
+                  timeout: remaining(),
+                  waitUntil: 'domcontentloaded'
+                });
               } catch (error) {
                 if (error.name !== 'TimeoutError') throw error;
-                throw Error(`目标入口或路由未到位：${target.id}，期望 ${target.entry}，实际 ${page.url()}`, {cause: error});
+                throw Error(`目标入口或路由未到位：${target.id}，期望 ${target.entry}，实际 ${page.url()}`, {
+                  cause: error
+                });
               }
               await content.waitFor({state: 'visible', timeout: remaining()});
-            },
+            }
           };
         } catch (error) {
           await context.close();
           throw error;
         }
       },
-      perform: (session, edge) => locator(session.page, edge.click).click(),
-    },
+      perform: (session, edge) => locator(session.page, edge.click).click()
+    }
   };
 }

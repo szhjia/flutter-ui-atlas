@@ -15,8 +15,15 @@ export function validateCatalog({screens, edges}) {
   }
   const edgeIds = new Set();
   for (const edge of edges) {
-    if (typeof edge?.id !== 'string' || !edge.id.trim() || edgeIds.has(edge.id) ||
-        !ids.has(edge.source) || !ids.has(edge.target) || typeof edge.action !== 'string' || !edge.action.trim()) {
+    if (
+      typeof edge?.id !== 'string' ||
+      !edge.id.trim() ||
+      edgeIds.has(edge.id) ||
+      !ids.has(edge.source) ||
+      !ids.has(edge.target) ||
+      typeof edge.action !== 'string' ||
+      !edge.action.trim()
+    ) {
       throw Error('连线 ID、端点或操作无效');
     }
     edgeIds.add(edge.id);
@@ -27,10 +34,11 @@ export function errorMessage(error) {
   return stripVTControlCharacters(error instanceof Error ? error.message : String(error));
 }
 
-async function writeAtomic(output, filename, value, captureId) {
+async function writeAtomic(output, filename, value, captureId, beforeRename) {
   const temporary = resolve(output, `${captureId}.${filename}.next`);
   try {
     await writeFile(temporary, JSON.stringify(value, null, 2));
+    await beforeRename?.();
     await rename(temporary, resolve(output, filename));
   } catch (error) {
     await rm(temporary, {force: true}).catch(() => {});
@@ -56,7 +64,7 @@ export async function createBatch(output) {
 async function assertState(session, screen) {
   const route = await session.currentRoute();
   if (route !== screen.route) throw Error(`目标不匹配: ${screen.id} 期望路由 ${screen.route}，实际 ${route}`);
-  if (!await session.matchesState(screen)) throw Error(`页面状态不匹配: ${screen.id}`);
+  if (!(await session.matchesState(screen))) throw Error(`页面状态不匹配: ${screen.id}`);
 }
 
 /** 输出目录写入互斥：整个批次（createBatch → publishBatch）持锁，与 runDiscovery 共用（见协议「输出目录写入互斥」）。 */
@@ -71,8 +79,13 @@ export async function capture(options) {
 
 /** 直接传入 browser 时由调用者管理生命周期，传入 launchBrowser 时由本批采集管理。 */
 async function runCaptureBatch({
-  adapter, browser, launchBrowser, output, publicPath = '/generated',
-  viewport = {width: 393, height: 852}, requireObservedEdges = false,
+  adapter,
+  browser,
+  launchBrowser,
+  output,
+  publicPath = '/generated',
+  viewport = {width: 393, height: 852},
+  requireObservedEdges = false
 }) {
   const ownsBrowser = !browser && Boolean(launchBrowser);
   const {captureId, directory} = await createBatch(output);
@@ -80,6 +93,8 @@ async function runCaptureBatch({
   let result;
   let failure;
   let stage = 'catalog';
+  const formatError = error =>
+    adapter?.sanitizeError ? errorMessage(adapter.sanitizeError(error)) : errorMessage(error);
 
   async function session(screen, work) {
     const current = await adapter.open({browser, screen, viewport});
@@ -103,11 +118,21 @@ async function runCaptureBatch({
     validateCatalog(catalog);
     const byId = new Map(catalog.screens.map(screen => [screen.id, screen]));
     stage = 'source';
-    const fingerprint = await adapter.sourceFingerprint?.() ?? '';
+    const fingerprint = (await adapter.sourceFingerprint?.()) ?? '';
     result = {
-      theme: '默认主题', scenarioId: 'default', seedVersion: '1', scope: '适配器登记的页面状态与操作',
-      ...adapter.metadata, schemaVersion: 1, captureId, capturedAt: new Date().toISOString(),
-      sourceFingerprint: fingerprint, viewport, screens: [], edges: [], runtimeErrors: [],
+      theme: '默认主题',
+      scenarioId: 'default',
+      seedVersion: '1',
+      scope: '适配器登记的页面状态与操作',
+      ...adapter.metadata,
+      schemaVersion: 1,
+      captureId,
+      capturedAt: new Date().toISOString(),
+      sourceFingerprint: fingerprint,
+      viewport,
+      screens: [],
+      edges: [],
+      runtimeErrors: []
     };
     stage = 'browser';
     if (!browser) {
@@ -129,7 +154,7 @@ async function runCaptureBatch({
         });
         node.status = 'captured';
       } catch (error) {
-        node.error = errorMessage(error);
+        node.error = formatError(error);
         delete node.image;
       }
       result.screens.push(node);
@@ -144,26 +169,26 @@ async function runCaptureBatch({
           const to = byId.get(target);
           const sameRoute = from.route === to.route;
           await session(from, async current => {
-            if (sameRoute && await current.matchesState(to)) {
+            if (sameRoute && (await current.matchesState(to))) {
               record.reason = '操作前目标状态已成立，无法区分前后状态';
               return;
             }
             await adapter.perform(current, edge);
             await current.ready(to);
             await assertState(current, to);
-            if (sameRoute && await current.matchesState(from)) throw Error('操作后源页面状态仍成立');
+            if (sameRoute && (await current.matchesState(from))) throw Error('操作后源页面状态仍成立');
           });
           if (!record.reason) record.status = 'observed';
         } catch (error) {
           record.status = 'failed';
-          record.reason = errorMessage(error);
+          record.reason = formatError(error);
         }
       }
       result.edges.push(record);
       console.log(`连线 ${record.status}: ${action}`);
     }
     stage = 'source';
-    if (fingerprint !== (await adapter.sourceFingerprint?.() ?? '')) {
+    if (fingerprint !== ((await adapter.sourceFingerprint?.()) ?? '')) {
       throw Error('采集期间源码变化，拒绝发布混合版本');
     }
     stage = 'capture';
@@ -172,44 +197,78 @@ async function runCaptureBatch({
       throw Error(`存在 ${unverified.length} 条未验证连线，拒绝发布：${unverified[0].id}`);
     }
   } catch (error) {
-    failure = {stage, error: errorMessage(error), cause: error};
+    failure = {stage, error: formatError(error), cause: error};
   } finally {
     if (ownsBrowser && browser) {
       try {
         await browser.close();
       } catch (error) {
-        failure ??= {stage: 'browser', error: errorMessage(error), cause: error};
+        failure ??= {stage: 'browser', error: formatError(error), cause: error};
       }
+    }
+  }
+
+  if (
+    !failure &&
+    result &&
+    !result.runtimeErrors.length &&
+    result.screens.every(screen => screen.status === 'captured') &&
+    result.edges.every(edge => edge.status !== 'failed')
+  ) {
+    try {
+      await adapter.assertFresh?.();
+      await adapter.beforePublish?.({captureId});
+    } catch (error) {
+      failure = {stage: 'configuration', error: formatError(error), cause: error};
     }
   }
 
   const failedScreens = result?.screens.filter(screen => screen.status === 'failed') ?? [];
   const failedEdges = result?.edges.filter(edge => edge.status === 'failed') ?? [];
-  const batchError = failure?.error ?? failedScreens[0]?.error ?? failedEdges[0]?.reason ?? result?.runtimeErrors[0] ?? null;
+  const batchError =
+    failure?.error ?? failedScreens[0]?.error ?? failedEdges[0]?.reason ?? result?.runtimeErrors[0] ?? null;
   const failed = batchError !== null;
   const attempt = {
-    captureId, completedAt: new Date().toISOString(), status: failed ? 'failed' : 'passed',
-    failedScreens: failedScreens.length, failedEdges: failedEdges.length,
-    stage: failure?.stage ?? (failed ? 'capture' : 'complete'), error: batchError,
-    report: artifact('attempt.json'),
+    captureId,
+    completedAt: new Date().toISOString(),
+    status: failed ? 'failed' : 'passed',
+    failedScreens: failedScreens.length,
+    failedEdges: failedEdges.length,
+    stage: failure?.stage ?? (failed ? 'capture' : 'complete'),
+    error: batchError,
+    report: artifact('attempt.json')
   };
-  await publishBatch({output, directory, captureId, result, attempt});
+  await publishBatch({
+    output,
+    directory,
+    captureId,
+    result,
+    attempt,
+    beforeCommit: () => adapter.assertFresh?.(),
+    commitPublication: adapter.commitPublication
+  });
   if (failed) console.error(`采集失败，未更新当前画布；报告：${resolve(directory, 'attempt.json')}`);
-  if (failure) throw failure.cause;
+  if (failure) throw adapter?.sanitizeError ? Error(failure.error) : failure.cause;
   return result;
 }
 
-export async function publishBatch({output, directory, captureId, result, attempt}) {
+export async function publishBatch({output, directory, captureId, result, attempt, beforeCommit, commitPublication}) {
   try {
     if (result) await writeFile(resolve(directory, 'manifest.json'), JSON.stringify(result, null, 2));
     await writeAtomic(directory, 'attempt.json', attempt, captureId);
     await writeAtomic(output, 'latest-attempt.json', attempt, captureId);
     // 当前地图是最后的发布动作。最近尝试不可写时，旧图仍可读。
-    if (attempt.status === 'passed') await writeAtomic(output, 'manifest.json', result, captureId);
+    if (attempt.status === 'passed') {
+      if (commitPublication)
+        await commitPublication(verify => writeAtomic(output, 'manifest.json', result, captureId, verify));
+      else await writeAtomic(output, 'manifest.json', result, captureId, beforeCommit);
+    }
   } catch (error) {
     const publicationFailure = {
-      ...attempt, status: 'failed', stage: 'publication',
-      error: [`发布失败：${errorMessage(error)}`, attempt.error].filter(Boolean).join('\n'),
+      ...attempt,
+      status: 'failed',
+      stage: 'publication',
+      error: [`发布失败：${errorMessage(error)}`, attempt.error].filter(Boolean).join('\n')
     };
     try {
       await writeAtomic(directory, 'attempt.json', publicationFailure, captureId);

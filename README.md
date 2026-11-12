@@ -1,135 +1,109 @@
 # Flutter UI Atlas · Flutter 界面图谱
 
-把真实 Flutter 页面放进全局画布，查看页面状态、导航连线、采集截图，并进入真实 Web 页面操作。独立开发工具，当前版本 `0.1.0`，可打包为全局 npm CLI。公开 npm 包尚未发布。
+把真实 Flutter Web 页面整理为可查看截图、状态和导航连线的桌面画布，并由工具打开隔离的 Chrome 会话进行真实操作。Atlas 是独立开发工具，当前版本 `0.1.0`，公开 npm 包尚未发布。
 
-## 全局 CLI
+Atlas 连接接入方已经启动的 Web 地址。CLI 不执行 Flutter 命令，不构建、不启动应用；应用开发、编译与发布由接入方自己的工具负责。接入普通 Flutter 工程无需专用入口、SDK、场景注入或修改组件内部契约。
 
-先从 Atlas 源码根目录生成安装包。安装使用 Node.js 22 或以上，采集和录制使用本机 Google Chrome。
+声明式多账户采集与工具管理的实时会话已完成独立 Demo 验收。当前证据、全仓告警和验证范围见[商城 Demo 验证记录](docs/商城Demo验证记录.md)。
+
+## 安装与接入
+
+安装使用 `.nvmrc` 对应的 Node 与 `package.json` 对应的 pnpm；浏览器采集、登录测试和实时会话默认使用本机 Google Chrome。
 
 ```sh
+# 在 Atlas 源码根目录生成并安装本地 CLI 包
 pnpm install --frozen-lockfile
 pnpm run pack:cli
 npm install --global .runtime/packages/flutter-ui-atlas-0.1.0.tgz
-```
 
-从 Flutter 工程根目录运行 `atlas init`。终端会询问工程显示名、Flutter Web 地址、画布端口和入口就绪文字；脚本可用 `atlas init --yes` 接受默认值，也可通过参数指定这些值。提交生成的 `.atlas/atlas.yaml`、`README.md` 和 `.gitignore`，把生成结果留在本机。
-
-```sh
+# 在接入方 Flutter 工程根目录运行
 atlas init
-# 启动配置中指定的 Flutter Web 开发服务后
+atlas config
+# 在另一个终端用应用自己的方式启动 Flutter Web 后
 atlas build
 atlas view
+# 有命名视口时：build 默认全部，view 默认首个
+atlas build --profile phone
+atlas view --profile pad
 ```
 
-`build` 访问已运行的开发地址。初始化模板默认采集回环地址的单个入口，就绪文字需与页面上的可见文字完全一致；留空时登记候选，显示「待采集」。结果和失败报告默认写到 `.atlas/generated/`，采集失败时画布保留上一批成功图谱。按 `atlas view` 打印的地址打开画布，端口冲突时用 `atlas view --port <端口>`。Flutter 停止后仍可看截图和连线，实时预览需要原开发地址可用。
+`init` 仅读取 `pubspec.yaml` 识别 Flutter 工程，生成本机 `.atlas/atlas.yaml` 和说明，并在工程根 `.gitignore` 中维护 `/.atlas/`。整个 `.atlas/` 包括 YAML、账户凭据、快照、截图、布局相关产物都属于本机数据，不应提交。重复初始化不会覆盖已有 YAML。忽略文件是符号链接或 `.atlas` 内已有 Git 跟踪文件时拒绝继续，请按提示自行处理；Atlas 不修改 Git 索引，不自动取消跟踪。
 
-多页采集可在 YAML 中配置 `screens` 和 `edges`。已有可识别的 MJS 适配器时，`atlas init` 会引用它，也可用 `--adapter-config <文件>` 显式指定。提供发现与录制能力的适配器可直接使用 `atlas record`。CLI 优先使用显式 `--config`，其次读取 Flutter 工程的 `.atlas/atlas.yaml`，再回退到旧 JSON/MJS 配置。未初始化的工程仍可用 `atlas build --url <地址> --ready-text <文字>`，新的结果同样写入 `.atlas/generated/`。旧 `.dart_tool/atlas/generated/` 产物可完整复制到新目录后继续查看。旧的 `atlas capture` 等同于 `atlas build`。
+`atlas config` 打开本机配置页，可编辑应用地址、认证方式、账户与启停状态，并执行真实登录测试。账户 ID 为稳定 UUID，修改名称或 Tag 不改变身份。用户名与密码存入 `.atlas/local/credentials.json`，目录 0700、文件 0600；文件是受限明文，读取接口不返回密码。角色列表的启停影响后续采集，不删除已有图谱。
 
-全局包提供预编译的 Viewer。浏览器采集发生在独立会话中，Flutter 生产编译和发布使用应用原有命令。下文的可选 Dart 适配示例使用单独的演示入口。
+单入口可设置 `readyText`；留空只登记候选。多页面在 YAML 登记 `screens` 与 `edges`；命名视口使用 `profiles`，页面按 `screens[].roles` 选择账户，`prepare` 复现状态，`ready.all` 同时核对多项证据，`edges[].steps` 记录真实操作。密码不写入 YAML，也不通过模板进入截图公开配置。完整字段与兼容规则见[协议与适配接口](docs/协议与适配接口.md)。
 
-## 工程结构
+配置页账户通过私有构建快照供采集与实时会话读取。批次使用固定配置、账户身份及凭据；配置或凭据变化使旧快照失效，不能把旧截图当成新配置的结果。页面身份以稳定账户 UUID 与 YAML 页面 ID 组合，改账户显示名不会丢失原页面布局。
+
+结果默认写入 `.atlas/generated/`。采集失败保留上一批成功图谱，最近失败报告单独记录；只有真实操作、目标路由和内容同时成立，连线才标记为 `observed`。仅截图成功不能证明导航通过。Flutter 服务停止后仍能查看已有截图与连线，实时操作要求应用地址可用。
+
+实时操作由 Atlas 在独立 Chrome 上下文中登录并准备选中页面，工具负责替换、取消和关闭会话。无需应用识别 `atlasSession` 或任何 Atlas 场景参数。旧 iframe／SDK 接入作为可选兼容方式保留，不作为普通应用的接入前提。
+
+显式 `--config` 优先，否则读取 Flutter 工程 `.atlas/atlas.yaml`，再回退到旧 JSON／MJS 配置；可信 MJS 可通过 `adapterConfig` 引用。旧 `atlas capture` 兼容 `atlas build`。复杂录制仍由提供 `discovery` 的适配器支持，应用差异留在适配器中。
+
+## 工程结构与画布开发
 
 ```text
-packages/viewer/             React Flow 画布，可嵌入其他开发工作台
-packages/capture/            浏览器采集器、声明式适配器与 BrowserAdapter 接口
-packages/cli/                全局 build、view 与 record 命令
-packages/flutter_ui_atlas/   可选 Flutter 导航、场景与就绪接口
-examples/flutter_app/       独立 Flutter 应用，普通入口与 Atlas 入口分离
-examples/capture.mjs        独立应用的浏览器适配器与采集入口
-examples/verify-viewer.mjs  真实浏览器验收
-docs/协议与适配接口.md       协议、证据含义和适配边界
-tests/                      采集器失败路径与目录契约测试
+packages/viewer/             React Flow 桌面画布
+packages/capture/            通用浏览器采集器与适配协议
+packages/cli/                初始化、配置、采集、查看与实时会话
+packages/flutter_ui_atlas/   可选 Flutter 导航监听 SDK
+demo/                       可独立复制运行的普通 Flutter 商城
+tests/shop-browser/         商城真实浏览器测试与测试 harness
 ```
 
-通用工程没有寓科账号、路由、数据库、测试 fixture 或端口依赖。寓科只是工具的一个外部使用方。
-
-## 运行独立示例
-
-本轮验证工具链为 Node 26.12.1（见 `.nvmrc`）、pnpm 10.33.0（见 `packageManager`）和已安装的 Google Chrome。构建独立 Flutter 示例还需 Flutter SDK。配置文件中的端口可以替换；已有服务可复用，端口冲突时启动失败。
+根目录开发入口只启动 Node／React 画布，无需 Flutter SDK：
 
 ```sh
 pnpm install --frozen-lockfile
-
-# 终端一，从 examples/flutter_app 目录运行
-flutter pub get
-flutter build web --debug --no-web-resources-cdn --target lib/main.dart
-python3 -m http.server 60210 --bind 127.0.0.1 --directory build/web
-
-# 终端二，从 Atlas 工程根目录运行
-pnpm build
-pnpm atlas build --config examples/atlas.config.json
-pnpm atlas view --config examples/atlas.config.json
+pnpm dev
 ```
 
-打开 `http://127.0.0.1:60200/`。示例使用普通 `main.dart` 构建，配置在 [examples/atlas.config.json](examples/atlas.config.json)。产物默认写到配置所在目录的 `.atlas/generated/`。用 `output` 可继续读取已有的 v1 采集目录。失败时当前地图继续指向最近一次成功采集，画布提示最近失败并提供报告。
+画布地址为 `http://127.0.0.1:60200/`。没有产物时展示待采集状态；已有截图和连线可以离线查看。开发画布不隐式构建、启动或采集 Demo。Viewer 仅面向桌面窗口，不新增手机端断点。
 
-## 本机配置页
+## 独立运行商城 Demo
 
-在 Flutter 工程根目录或子目录运行 `atlas config`，打开角色与登录配置页。没有官方配置时首次保存创建 `.atlas/atlas.yaml`；可用 `--port 0` 自动分配端口，`--no-open` 仅打印入口。
+`demo/` 是普通 Flutter 工程，只有 `lib/main.dart`，有自己的 pubspec、锁文件、素材与测试。可将整个目录复制到其他位置，使用标准 Flutter 工具运行；它不依赖 Atlas SDK、专用入口或 Atlas 生产运行脚本。
 
-支持应用设置、角色新增/编辑/独立启停/删除、密码保持/清除，以及通用表单和可信本地 MJS 的真实登录测试。账号和密码保存在 `.atlas/local/credentials.json`，目录 0700、文件 0600，并自动维护 Git 忽略；文件内容未加密，密码不会由读取接口回显。不要提交 `.atlas/local/`。
+```sh
+cd demo
+flutter pub get
+flutter run -d web-server --web-hostname 127.0.0.1 --web-port 60210
+# 测试与构建同样在 demo 目录运行
+flutter analyze
+flutter test
+flutter build web --no-web-resources-cdn --no-wasm-dry-run
+```
 
-现有官方 YAML 保留未知设置和注释。直接旧 JSON/MJS 配置不会被网页自动改写，先迁入官方 YAML；MJS 可继续由 `adapterConfig` 引用。登录协议、MJS 契约及来源限制见 [协议与适配接口](docs/协议与适配接口.md#本机配置服务config-v1)。
+演示账户为 `user1`、`user2`，密码均为 `1234.com`，权限相同。这些仅属于独立 Demo。先登录再进入首页、商城、我的；6 个本地商品均有详情，购物车支持增减、删除与整数分合计。各账户购物车保存在当前浏览器，刷新恢复登录，退出保留购物车；我的页面可确认后重置演示数据。没有后端、订单、支付或真实交易。
 
-当前阶段提供配置保存与真实登录测试；现有 `atlas build` 尚不消费新增角色凭据，多角色自动采集将在后续接入。
+应用宽度小于 720 逻辑像素使用底部导航，其余使用侧边导航；基准采集视口为 phone 393×852、pad 1024×768。接入 Atlas 时按普通工程执行 `atlas init`、在配置页设置演示账户、用 YAML 描述页面和操作。[商城声明资料](tests/helpers/shop-catalog.yaml)可供参考；合并流程字段时保留配置页保存的应用、认证与账户。生产 `scripts/shop-*` 专用编排路径已退出当前方案，测试 harness 仅供验收使用。
 
-## 接入其他 Flutter Web 应用
+旧专用入口的编译和采集产物已归档至 `.runtime/pre-standard-atlas/`，不能作为普通 Demo 本轮采集或实时会话通过的证据。
 
-复制示例 JSON 到项目自己的开发工具目录，配置 `baseUrl`、页面 ID、路由和能区分页面状态的可见内容。使用 `routeMode: "pathname"` 支持路径路由，子路径部署（如 `https://host/app/`）需加 `routePrefix: "/app"`；`baseUrl` 默认限回环地址，局域网或远程开发服务需设 `allowRemoteUrls: true`。需要复现的页面操作通过连线的 `click` 登记；省略时只展示声明关系。启动项目自身的 Web 服务，再运行 Atlas 两条命令。可从任意目录运行 `atlas build --config <配置绝对路径>`。
+## 接入与维护边界
 
-登录、数据准备或自定义路由可使用可信本地 `.mjs` 配置。默认导出含 `adapter`、`output` 等设置的对象，选填 `previewUrls` 为按页面 ID 索引的 HTTP(S) 地址。没有地址时，独立画布仍支持截图和关系查看。适配接口、判据和配置字段见 [协议与适配接口](docs/协议与适配接口.md)。
+- 应用页面变化后，先由接入方让 Web 服务加载新代码，再重新采集、刷新画布。磁盘源码指纹不能证明浏览器加载的构建版本。
+- 新增页面至少提供稳定 ID、入口、路由、确定样本和就绪条件；动态详情、空态与身份差异需要明确样本，不能靠猜测路由覆盖。
+- 登录、数据准备和自定义路由通过通用声明式步骤或可信本地 MJS 适配器完成。默认地址限回环，远程开发服务需显式 `allowRemoteUrls: true`。
+- 嵌入 Viewer 可使用 `AtlasViewerAdapter`；结果、预览及源码指纹由宿主提供。可选 `AtlasNavigatorObserver` 只监听命名 Navigator 路由，不代表存在通用 go_router 插件。
+- 普通应用无需导入 SDK。已有独立开发入口的 SDK 和 iframe 预览仍可按兼容协议使用；不要求修改原生宿主或 UI 公共组件。
 
-嵌入已有开发工作台时，宿主通过本地 `link:` 引用 `packages/viewer`，并在 Vite 配置中去重 React、React DOM 和 React Flow。向 `AtlasViewerAdapter` 提供结果加载，并按需提供预览地址、最近尝试、源码指纹和会话隔离能力；配置助手（`createPreviewUrl`、`safeLink`、快照读取等）可从 `@flutter-ui-atlas/viewer/config` 导入。独立画布和嵌入方式都复用同一 manifest。
+## 自由画布
 
-需要 Flutter 内部导航事件时，在 `dev_dependencies` 引入 `packages/flutter_ui_atlas`，由独立 `main_atlas.dart` 组装 `AtlasNavigatorObserver`（SDK 当前唯一的公开接口）。业务应用的普通入口可以继续独立运行。
+拖动只推动附近未锁定页面；锁定或筛选隐藏的页面作为固定障碍。空间不足恢复整次拖动，Esc 取消，撤销／重做以手势为单位。方向键移动 10 个画布单位，⌘／Ctrl Z 撤销，Shift Z 重做。
 
-## 页面变化后怎样维护
+整理可见页面先确认影响范围；筛选、刷新和截图尺寸变化不自动全局重排。布局通过稳定 `layoutKey` 与页面 ID 保存，每种视口使用不同 key，同一视口跨采集批次复用。另一窗口更新只提示；损坏或未知存储不覆盖原数据。详情见[自由画布验证记录](docs/自由画布验证记录.md)。
 
-- 已登记页面的 UI 改变：先确保 Flutter 服务加载新代码，然后重新运行项目采集入口；画布点击“刷新采集结果”。
-- 新增页面或状态：在应用侧目录增加稳定 ID、入口、路由、内容就绪条件及样本；工具自动形成节点，无须改画布代码。
-- 新增跳转：登记 source、target、action，适配器执行实际点击。未提供操作适配时显示“声明关系，未验证”。
-- 动态详情、登录身份、空数据：作为不同样本登记；不会通过猜测路由自动获得全部覆盖。
-- 开关：不启动工具、不运行采集入口，产品仍按原入口工作；专用 Flutter 开发入口按需启用。
-
-## 验证命令
+## 验证
 
 ```sh
 pnpm type-check
 pnpm test
 pnpm build
 pnpm test:browser
-node examples/verify-viewer.mjs http://127.0.0.1:60200/
-# packages/flutter_ui_atlas 目录
-flutter test
-flutter analyze --no-pub
+# demo 目录内：flutter analyze、flutter test、flutter build web
+# 可选 SDK 目录内：flutter test、flutter analyze --no-pub
 ```
 
-浏览器验收证据保存在 `.runtime/`，采集截图保存在配置的产物目录。当前已有 Navigator 独立示例和外部自定义 Router 应用接入，见[配置化接入验证记录](docs/配置化接入验证记录.md)。自动热重载采集、增量依赖分析、构建版本握手与 go_router 专用插件仍未实现。
-
-## 自由画布
-
-- 拖动页面时只推动附近未锁定页面；锁定或被筛选隐藏的页面是固定障碍。空间不足会恢复整次拖动。按 Esc 取消，撤销／重做以整次手势为单位。
-- 页面标题右侧圆点切换锁定；锁定后仍可选中、查看截图和实时预览。方向键移动选中页 10 个画布单位，⌘／Ctrl Z 撤销，Shift Z 重做。
-- “整理可见页面”先显示影响数量，确认后只整理可见、未锁定页。筛选、刷新和截图尺寸变化不触发全局重排；尺寸变化造成的冲突会明确提示。
-- 连线绕开页面，文字为独立白底标签；缩放低于45%时收起普通标签，选中页面或关系仍能查看。空间不足显示省略入口，完整操作名和验证状态保留在详情中。
-- 接入方设置 `layoutKey`（例如 `my-app:phone-393x852:v1`）启用本机浏览器布局保存。标识应包含应用、截图视口及布局版本，不能使用每批变化的 captureId。未设置时只在会话中保存。
-- 另一窗口更新布局只提示，不自动覆盖当前操作；可手动载入或保留当前布局。损坏、未知版本或存储受限时不覆盖旧数据，并显示告警。
-
-实现与验收见 [自由画布验证记录](docs/自由画布验证记录.md)。组件树、组件配色详情仍留待后续设计。
-
-## 自动发现和流程录制
-
-自动模式使用独立的 `discovery` 配置与产物目录。启动上文的 Flutter Web 示例并构建 Viewer 后，在 Atlas 根目录执行：
-
-```sh
-pnpm atlas build --config examples/atlas-discovery.mjs
-pnpm atlas record --config examples/atlas-discovery.mjs
-pnpm atlas record --config examples/atlas-discovery.mjs --journeys
-pnpm atlas view --config examples/atlas-discovery.mjs
-```
-
-手动录制从应用入口打开隔离 Chrome，操作完成后在终端按回车。普通路由候选由项目适配器从已有定义派生。Atlas 对实际到达、内容就绪的页面截图，对已确认的真实操作生成连线。新候选和缺少复现数据的候选显示为「待采集」。独立画布实时预览需要应用服务继续运行。
-
-### 声明式画布外壳
-
-独立 CLI 的 `viewer` 配置和 React Viewer 的 `config` 属性共用 Atlas 外壳。项目可以声明页眉品牌、导航链接、空详情区说明和预览入口。省略外壳配置即可使用默认样式。字段、默认值与旧适配器的兼容方式见[声明式 Viewer 外壳](docs/协议与适配接口.md#声明式-viewer-外壳)。
+本轮通过 16 项 Flutter、138 项 Node、60 项 Vitest、30 项通用 Chrome 和 6 项独立 Demo Chrome 验收，默认构建两视口各 16 状态／21 条操作。全仓格式检查仍有既有告警，变更文件检查通过；当前结果与历史证据见[商城 Demo 验证记录](docs/商城Demo验证记录.md)。Web 验证不替代 iOS／Android 验收。

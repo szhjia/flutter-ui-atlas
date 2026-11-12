@@ -71,3 +71,4 @@ public/generated/
 .video_agent/
 .zcode/
 .playwright-mcp/
+.playwright-cli/

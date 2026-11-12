@@ -1,8 +1,9 @@
-import {lstat, mkdir, readFile, unlink, writeFile} from 'node:fs/promises';
+import {lstat, mkdir, open, readFile, unlink} from 'node:fs/promises';
 import {basename, dirname, extname, join, relative, resolve} from 'node:path';
 import {createInterface} from 'node:readline/promises';
 import {stdin, stdout} from 'node:process';
 import {parse, stringify} from 'yaml';
+import {ensureAtlasIgnored} from './project-ignore.mjs';
 import {localWebDiscovery} from './local-web.mjs';
 import {findFlutterProject, readConfigFile, resolveProjectConfig, validateAtlasOutput} from './project.mjs';
 
@@ -22,13 +23,19 @@ atlas view
 - 单入口用 \`readyText\` 指定页面上的准确可见文字；留空时只登记候选。
 - 多页采集用 \`screens\` 登记路由及就绪条件，用 \`edges\` 登记实际点击。
 - 复杂项目可通过 \`adapterConfig\` 引用可信的本地 MJS 配置。需要录制时，适配器需提供 \`discovery\`。
-- 提交配置和本说明。若调整了 \`output\`，请在本目录的 \`.gitignore\` 中忽略新的产物目录。
+- 整个 \`.atlas/\` 目录仅供本机使用，已在工程根 \`.gitignore\` 中忽略；请勿提交配置、凭据和采集产物。
 `;
 
 async function createOnce(file, contents, created, optional = false) {
   try {
-    await writeFile(file, contents, {flag: 'wx'});
-    created.push(file);
+    const handle = await open(file, 'wx');
+    try {
+      const info = await handle.stat();
+      created.push({file, info, contents});
+      await handle.writeFile(contents);
+    } finally {
+      await handle.close();
+    }
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
     if (!optional) throw Error(`Atlas 已初始化：${file}`);
@@ -42,6 +49,7 @@ export async function initAtlas(options, {cwd = process.cwd(), input = stdin, ou
   await validateAtlasOutput(directory, join(directory, 'generated'));
   try {
     await lstat(file);
+    await ensureAtlasIgnored(project);
     throw Error(`Atlas 已初始化：${file}`);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
@@ -72,9 +80,9 @@ export async function initAtlas(options, {cwd = process.cwd(), input = stdin, ou
   await validateAtlasOutput(directory, join(directory, artifactDirectory));
 
   const pubspec = parse(await readFile(join(project, 'pubspec.yaml'), 'utf8'));
-  const defaultTitle = selected.config.title ?? selected.config.viewer?.shell?.title ?? pubspec?.name ?? 'Flutter UI Atlas';
-  const terminal = !options.yes && input.isTTY && output.isTTY
-    ? createInterface({input, output}) : null;
+  const defaultTitle =
+    selected.config.title ?? selected.config.viewer?.shell?.title ?? pubspec?.name ?? 'Flutter UI Atlas';
+  const terminal = !options.yes && input.isTTY && output.isTTY ? createInterface({input, output}) : null;
   async function field(value, label, fallback) {
     if (value !== undefined) return String(value).trim();
     if (!terminal) return String(fallback);
@@ -91,12 +99,17 @@ export async function initAtlas(options, {cwd = process.cwd(), input = stdin, ou
     if (!title) throw Error('工程显示名不能为空');
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error('port 必须是有效的 TCP 端口');
     if (baseUrl !== undefined) localWebDiscovery(baseUrl, readyText);
-    config = {title, port, output: artifactDirectory, ...(adapterFile ? {adapterConfig: relative(directory, adapterFile)}
-      : {baseUrl, readyText})};
+    config = {
+      title,
+      port,
+      output: artifactDirectory,
+      ...(adapterFile ? {adapterConfig: relative(directory, adapterFile)} : {baseUrl, readyText})
+    };
   } finally {
     terminal?.close();
   }
 
+  await ensureAtlasIgnored(project);
   await mkdir(directory, {recursive: true});
   const created = [];
   try {
@@ -105,7 +118,18 @@ export async function initAtlas(options, {cwd = process.cwd(), input = stdin, ou
     const ignored = [...new Set(['generated', artifactDirectory])].map(path => `/${path}/\n`).join('');
     await createOnce(join(directory, '.gitignore'), ignored, created, true);
   } catch (error) {
-    await Promise.allSettled(created.map(path => unlink(path)));
+    await Promise.allSettled(
+      created.map(async ({file, info, contents}) => {
+        const current = await lstat(file);
+        if (
+          current.dev === info.dev &&
+          current.ino === info.ino &&
+          current.isFile() &&
+          (await readFile(file, 'utf8')) === contents
+        )
+          await unlink(file);
+      })
+    );
     throw error;
   }
   return file;

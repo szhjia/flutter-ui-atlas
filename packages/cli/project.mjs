@@ -3,6 +3,37 @@ import {basename, dirname, extname, isAbsolute, join, relative, resolve, sep} fr
 import {pathToFileURL} from 'node:url';
 import {parse} from 'yaml';
 
+/** 命名视口只影响输出分组，不要求项目安装 Flutter SDK。 */
+export function selectProfiles(config, selected) {
+  const valid = viewport =>
+    Number.isSafeInteger(viewport?.width) &&
+    viewport.width > 0 &&
+    Number.isSafeInteger(viewport?.height) &&
+    viewport.height > 0;
+  if (config.profiles === undefined) {
+    if (selected !== undefined) throw Error('未配置命名视口，不能使用 --profile');
+    const viewport = config.viewport ?? {width: 393, height: 852};
+    if (!valid(viewport)) throw Error('视口 width、height 必须是正整数');
+    return [{name: null, viewport}];
+  }
+  if (
+    !config.profiles ||
+    typeof config.profiles !== 'object' ||
+    Array.isArray(config.profiles) ||
+    !Object.keys(config.profiles).length
+  ) {
+    throw Error('profiles 必须是非空的命名视口映射');
+  }
+  const profiles = Object.entries(config.profiles).map(([name, viewport]) => {
+    if (!/^[a-zA-Z][\w-]*$/.test(name) || !valid(viewport)) throw Error(`视口配置无效：${name}`);
+    return {name, viewport: {width: viewport.width, height: viewport.height}};
+  });
+  if (selected === undefined) return profiles;
+  const profile = profiles.find(profile => profile.name === selected);
+  if (!profile) throw Error(`未找到视口：${selected}`);
+  return [profile];
+}
+
 async function exists(path) {
   try {
     await stat(path);
@@ -29,7 +60,7 @@ export async function findFlutterProject(cwd) {
 
 async function configAt(directory) {
   const paths = ['atlas.config.json', 'atlas.config.mjs'].map(name => join(directory, name));
-  const present = (await Promise.all(paths.map(exists))).flatMap((found, index) => found ? [paths[index]] : []);
+  const present = (await Promise.all(paths.map(exists))).flatMap((found, index) => (found ? [paths[index]] : []));
   if (present.length > 1) throw Error(`${directory} 同时有两种 Atlas 配置，请使用 --config 选择。`);
   return present[0];
 }
@@ -40,7 +71,8 @@ export async function readConfigFile(file) {
   const yaml = extension === '.yaml' || extension === '.yml';
   const custom = extension === '.mjs';
   if (!yaml && !custom && extension !== '.json') throw Error('配置文件必须是 .yaml、.yml、.json 或 .mjs');
-  const config = custom ? (await import(pathToFileURL(file))).default
+  const config = custom
+    ? (await import(pathToFileURL(file))).default
     : (yaml ? parse : JSON.parse)(await readFile(file, 'utf8'));
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw Error('配置必须是对象');
   if (!yaml) return {config, custom, directory, file};
@@ -52,7 +84,13 @@ export async function readConfigFile(file) {
   const output = config.output ?? 'generated';
   const {adapterConfig, ...settings} = config;
   if (adapterConfig === undefined) {
-    return {config: {...settings, output}, custom: false, directory, managed, entryMode: settings.screens === undefined};
+    return {
+      config: {...settings, output},
+      custom: false,
+      directory,
+      managed,
+      entryMode: settings.screens === undefined
+    };
   }
   if (typeof adapterConfig !== 'string' || extname(adapterConfig) !== '.mjs') {
     throw Error('adapterConfig 必须指向受信任的本地 .mjs 配置');
@@ -100,8 +138,16 @@ export async function resolveProjectConfig({cwd = process.cwd(), configFile} = {
       if (target === project) return loaded;
     }
     const parent = dirname(workspace);
-    if (parent === workspace || await exists(join(workspace, '.git'))) break;
+    if (parent === workspace || (await exists(join(workspace, '.git')))) break;
     workspace = parent;
   }
-  return {config: {output: 'generated'}, custom: false, directory: join(project, '.atlas'), managed: true, implicit: true};
+  return {
+    config: {output: 'generated'},
+    custom: false,
+    directory: join(project, '.atlas'),
+    managed: true,
+    implicit: true
+  };
 }
+
+export {expandCatalog} from './project-catalog.mjs';

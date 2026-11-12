@@ -29,8 +29,11 @@ export interface AtlasViewerConfig {
   captureHint?: string;
   artifactPaths: readonly string[];
   fingerprintUrl?: string;
-  preview?: AtlasPreviewConfig | {urls: Readonly<Record<string, string>>} |
-    {routeMode: 'hash' | 'pathname'; localOnly?: boolean};
+  managedLive?: {endpoint: string; token: string};
+  preview?:
+    | AtlasPreviewConfig
+    | {urls: Readonly<Record<string, string>>}
+    | {routeMode: 'hash' | 'pathname'; localOnly?: boolean};
 }
 
 function httpUrl(value: string, base?: string): URL | null {
@@ -56,7 +59,7 @@ export function createPreviewUrl(preview: AtlasViewerConfig['preview']) {
   if (!preview) return undefined;
   return (screen: MapScreen, sessionId: string): string | null => {
     if ('urls' in preview) {
-      return Object.hasOwn(preview.urls, screen.id) ? httpUrl(preview.urls[screen.id])?.href ?? null : null;
+      return Object.hasOwn(preview.urls, screen.id) ? (httpUrl(preview.urls[screen.id])?.href ?? null) : null;
     }
     if ('routeMode' in preview) {
       const url = httpUrl(screen.entry);
@@ -67,8 +70,8 @@ export function createPreviewUrl(preview: AtlasViewerConfig['preview']) {
 
     const origin = httpUrl(preview.origin)?.origin;
     if (!origin) return null;
-    const entry = preview.entries && Object.hasOwn(preview.entries, screen.entry)
-      ? preview.entries[screen.entry] : undefined;
+    const entry =
+      preview.entries && Object.hasOwn(preview.entries, screen.entry) ? preview.entries[screen.entry] : undefined;
     if (preview.entries && !entry) return null;
     const path = screen.previewPath ?? entry?.path;
     if (!path || !rootedPath(path)) return null;
@@ -78,6 +81,62 @@ export function createPreviewUrl(preview: AtlasViewerConfig['preview']) {
     for (const [name, value] of Object.entries(preview.query ?? {})) url.searchParams.set(name, value);
     if (preview.sessionParam) url.searchParams.set(preview.sessionParam, sessionId);
     return url.href;
+  };
+}
+
+export interface AtlasLiveSessionInput {
+  screenId: string;
+  captureId: string;
+  requestId: string;
+  signal: AbortSignal;
+}
+export interface AtlasLiveSessionHandle {
+  id: string;
+  requestId: string;
+  screenId: string;
+  captureId: string;
+  state: 'ready';
+}
+export interface AtlasLiveSessionStatus {
+  state: 'idle' | 'opening' | 'ready' | 'failed';
+  id?: string;
+  requestId?: string;
+  error?: string;
+}
+export function createManagedLiveAdapter(config: AtlasViewerConfig['managedLive']) {
+  if (!config) return undefined;
+  if (!rootedPath(config.endpoint) || /[?#]/.test(config.endpoint) || !config.token)
+    throw Error('实时会话接口必须使用本站路径和会话令牌');
+  const endpoint = config.endpoint.replace(/\/$/, '');
+  async function call(path: string, body?: object, signal?: AbortSignal) {
+    const response = await fetch(`${endpoint}/${path}`, {
+      method: body ? 'POST' : 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: {'x-atlas-token': config!.token, ...(body ? {'content-type': 'application/json'} : {})},
+      body: body ? JSON.stringify(body) : undefined,
+      signal,
+      keepalive: path === 'close'
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.message || `实时会话请求失败（HTTP ${response.status}）`);
+    return result;
+  }
+  return {
+    async openLiveSession({
+      screenId,
+      captureId,
+      requestId,
+      signal
+    }: AtlasLiveSessionInput): Promise<AtlasLiveSessionHandle> {
+      return call('open', {screenId, captureId, requestId}, signal);
+    },
+    async closeLiveSession(id: string): Promise<void> {
+      await call('close', {id});
+    },
+    async liveSessionStatus(): Promise<AtlasLiveSessionStatus> {
+      return call('status');
+    }
   };
 }
 
@@ -92,13 +151,24 @@ export const missingManifest = '尚无可用采集结果，请先运行采集命
 
 export function assertManifest(value: unknown): asserts value is AppMapManifest {
   const map = value as Partial<AppMapManifest> | null;
-  if (map?.schemaVersion !== 1 || !Array.isArray(map.screens) || !Array.isArray(map.edges) ||
-      !map.viewport || !Number.isFinite(map.viewport.width) || !Number.isFinite(map.viewport.height) ||
-      map.screens.some(screen => typeof screen?.id !== 'string' ||
-        !['captured', 'pending', 'failed'].includes(screen.status)) ||
-      map.edges.some(edge => typeof edge?.id !== 'string' ||
-        typeof edge.source !== 'string' || typeof edge.target !== 'string' ||
-        !['declared', 'observed', 'failed'].includes(edge.status))) {
+  if (
+    map?.schemaVersion !== 1 ||
+    !Array.isArray(map.screens) ||
+    !Array.isArray(map.edges) ||
+    !map.viewport ||
+    !Number.isFinite(map.viewport.width) ||
+    !Number.isFinite(map.viewport.height) ||
+    map.screens.some(
+      screen => typeof screen?.id !== 'string' || !['captured', 'pending', 'failed'].includes(screen.status)
+    ) ||
+    map.edges.some(
+      edge =>
+        typeof edge?.id !== 'string' ||
+        typeof edge.source !== 'string' ||
+        typeof edge.target !== 'string' ||
+        !['declared', 'observed', 'failed'].includes(edge.status)
+    )
+  ) {
     throw Error('采集文件格式不正确');
   }
 }
@@ -107,9 +177,13 @@ async function readAttempt(base: string): Promise<CaptureAttempt | null> {
   try {
     const response = await fetch(`${base}/latest-attempt.json`, {cache: 'no-store'});
     if (!response.ok) return null;
-    const attempt = await response.json() as CaptureAttempt | null;
-    if (!attempt || !['passed', 'failed'].includes(attempt.status) ||
-      (attempt.error != null && typeof attempt.error !== 'string')) return null;
+    const attempt = (await response.json()) as CaptureAttempt | null;
+    if (
+      !attempt ||
+      !['passed', 'failed'].includes(attempt.status) ||
+      (attempt.error != null && typeof attempt.error !== 'string')
+    )
+      return null;
     return attempt;
   } catch {
     return null;
@@ -127,14 +201,20 @@ export async function readViewerSnapshot(config: AtlasViewerConfig): Promise<Vie
     try {
       const response = await fetch(`${base}/manifest.json`, {cache: 'no-store'});
       // Vite 的静态预览会用 HTML 回退尚不存在的文件。
-      if (response.status === 404 ||
-        (response.ok && response.headers.get('content-type')?.includes('text/html'))) continue;
+      if (response.status === 404 || (response.ok && response.headers.get('content-type')?.includes('text/html')))
+        continue;
       if (!response.ok) throw Error(`无法读取采集结果（HTTP ${response.status}）`);
-      const map: unknown = await response.json().catch(() => { throw Error('采集文件格式不正确'); });
+      const map: unknown = await response.json().catch(() => {
+        throw Error('采集文件格式不正确');
+      });
       assertManifest(map);
       return {map, attempt: await readAttempt(base), error: ''};
     } catch (error) {
-      return {map: null, attempt: await readAttempt(base), error: error instanceof Error ? error.message : String(error)};
+      return {
+        map: null,
+        attempt: await readAttempt(base),
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
   return {...emptySnapshot, error: missingManifest, attempt: firstSource ? await readAttempt(firstSource) : null};

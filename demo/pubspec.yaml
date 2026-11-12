@@ -1,15 +1,17 @@
-name: atlas_example
-description: 与业务工程无关的 Flutter 图谱接入示例。
+name: shop_demo
+description: 独立 Flutter 商城演示应用。
 publish_to: none
 version: 0.1.0+1
 environment:
-  sdk: '>=3.4.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
 dependencies:
   flutter:
     sdk: flutter
+  go_router: ^18.1.4
+  shared_preferences: ^2.5.6
 dev_dependencies:
-  flutter_ui_atlas:
-    path: ../../packages/flutter_ui_atlas
+  flutter_test:
+    sdk: flutter
 flutter:
   uses-material-design: true
   fonts:

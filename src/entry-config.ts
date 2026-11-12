@@ -9,7 +9,7 @@ export interface EntryConfigResult {
 export const defaultEntryConfig: AtlasViewerConfig = {
   artifactPaths: ['/generated'],
   shell: {title: 'Flutter UI Atlas'},
-  layoutKey: 'atlas-example:phone-393x852:v1',
+  layoutKey: 'atlas-default:phone-393x852:v1',
   captureHint: 'atlas build --config <配置文件>',
   preview: {routeMode: 'hash', localOnly: true}
 };
