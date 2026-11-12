@@ -3,6 +3,7 @@ import type {Role, RoleDraft} from './types';
 export function createDraft(role?: Role): RoleDraft {
   return {
     id: role?.id,
+    revision: role?.revision,
     tag: role?.tag ?? '',
     name: role?.name ?? '',
     username: role?.username ?? '',
@@ -30,6 +31,6 @@ export function validateDraft(draft: RoleDraft, roles: Role[]): Record<string, s
 }
 
 export function credentialsMatch(a: RoleDraft, b: RoleDraft) {
-  return a.id === b.id && a.username === b.username && a.password === b.password &&
+  return a.id === b.id && a.tag === b.tag && a.username === b.username && a.password === b.password &&
     a.clearPassword === b.clearPassword;
 }

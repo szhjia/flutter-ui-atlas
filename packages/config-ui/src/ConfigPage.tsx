@@ -1,5 +1,7 @@
 import {useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject} from 'react';
 import {IconEye, IconEyeOff, IconX} from '@tabler/icons-react';
+import {AuthenticationFields} from './AuthenticationFields';
+import mark from './assets/atlas-mark.png';
 import {createDraft, credentialsMatch, normalizeDraft, validateDraft} from './model';
 import type {ConfigAdapter, LoginResult, LoginStatus, Project, Role, RoleDraft} from './types';
 
@@ -34,10 +36,13 @@ function Field({label, name, value, onChange, error, disabled, placeholder, chil
 
 export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
   const [roles, setRoles] = useState<Role[]>([]);
-  const [project, setProject] = useState<Project>({name: '', baseUrl: ''});
+  const [project, setProject] = useState<Project>({name: '', baseUrl: '', authentication: {type: 'none'}, allowRemoteUrls: false, revision: ''});
   const [loaded, setLoaded] = useState(false);
+  const [connected, setConnected] = useState(true);
+  const [connectionError, setConnectionError] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [drawer, setDrawer] = useState<'role' | 'project' | null>('role');
+  const [drawer, setDrawer] = useState<'role' | 'project' | null>(null);
   const [draft, setDraft] = useState<RoleDraft>(createDraft());
   const [baseline, setBaseline] = useState('');
   const [projectDraft, setProjectDraft] = useState(project);
@@ -77,15 +82,31 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
     adapter.load().then(value => {
       if (!active) return;
       setRoles(value.roles); setProject(value.project); setProjectDraft(value.project);
-      const initial = createDraft(value.roles.find(role => role.tag === 'reviewer') ?? value.roles[0]);
+      const initial = createDraft(value.roles[0]);
+      setDrawer(value.roles.length ? 'role' : null);
       setDraft(initial); setBaseline(JSON.stringify(initial));
       setLoadError(''); setLoaded(true);
     }).catch(() => { if (active) setLoadError('读取配置失败，请重新加载页面。'); });
     return () => { active = false; request.current++; if (toast.current) clearTimeout(toast.current); };
   }, [adapter]);
 
+  useEffect(() => {
+    let active = true;
+    const check = () => adapter.health().then(() => { if (active) { setConnected(true); setConnectionError(''); } })
+      .catch((error: Error) => { if (active) { setConnected(false); setConnectionError(error.message); } });
+    void check(); const timer = setInterval(() => void check(), 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [adapter]);
+
   function invalidateLogin() {
     request.current++; setTesting(false); setLogin(null);
+  }
+
+  function focusAfterRender(action: () => void) {
+    const previous = document.activeElement;
+    requestAnimationFrame(() => {
+      if (document.activeElement === previous || document.activeElement === document.body) action();
+    });
   }
 
   function change<K extends keyof RoleDraft>(key: K, value: RoleDraft[K]) {
@@ -97,7 +118,7 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
 
   function close() {
     invalidateLogin(); setDrawer(null); setErrors({}); setShowPassword(false);
-    requestAnimationFrame(() => trigger.current?.focus());
+    focusAfterRender(() => trigger.current?.focus());
   }
 
   function navigate(action: () => void) {
@@ -112,7 +133,7 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
       const next = createDraft(role);
       invalidateLogin(); setDraft(next); setBaseline(JSON.stringify(next));
       setErrors({}); setShowPassword(false); setDrawer('role');
-      requestAnimationFrame(() => role ? drawerHeading.current?.focus() : firstField.current?.focus());
+      focusAfterRender(() => role ? drawerHeading.current?.focus() : firstField.current?.focus());
     });
   }
 
@@ -120,14 +141,15 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
     trigger.current = document.activeElement as HTMLElement;
     navigate(() => {
       invalidateLogin(); setProjectDraft(project); setErrors({}); setDrawer('project');
-      requestAnimationFrame(() => drawerHeading.current?.focus());
+      focusAfterRender(() => drawerHeading.current?.focus());
     });
   }
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key !== 'Escape' || saving) return;
-      if (pendingIntent) setPendingIntent(null);
+      if (deleting) setDeleting(false);
+      else if (pendingIntent) setPendingIntent(null);
       else if (drawer) navigate(close);
     }
     window.addEventListener('keydown', onKey);
@@ -135,7 +157,7 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
   });
 
   useEffect(() => {
-    if (!pendingIntent) return;
+    if (!pendingIntent && !deleting) return;
     const previous = document.activeElement as HTMLElement;
     const dialog = discardDialog.current;
     dialog?.querySelector<HTMLButtonElement>('button')?.focus();
@@ -150,24 +172,24 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
     }
     dialog?.addEventListener('keydown', trap);
     return () => { dialog?.removeEventListener('keydown', trap); previous?.focus(); };
-  }, [pendingIntent]);
+  }, [pendingIntent, deleting]);
 
   async function save(event: FormEvent) {
     event.preventDefault();
     const nextErrors = validateDraft(draft, roles);
     setErrors(nextErrors);
     if (Object.values(nextErrors).some(Boolean)) {
-      requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus());
+      focusAfterRender(() => document.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus());
       return;
     }
-    setSaving(true); invalidateLogin();
+    setSaving(true); request.current++; setTesting(false);
     try {
-      const role = await adapter.saveRole(normalizeDraft(draft));
+      const role = await adapter.saveRole({...normalizeDraft(draft), checkId: login?.checkId});
       applyRole(role);
       setBaseline(JSON.stringify(draft)); close();
-      notify(adapter.mode === 'preview' ? `已在本次预览中保存「${role.name}」。` : `已保存「${role.name}」。`);
-    } catch {
-      setErrors(previous => ({...previous, general: '保存失败，请重试；原配置未被替换。'}));
+      notify(`已保存「${role.name}」。`);
+    } catch (error) {
+      setErrors(previous => ({...previous, general: error instanceof Error ? error.message : '保存失败，请重试；原配置未被替换。'}));
     } finally { setSaving(false); }
   }
 
@@ -193,7 +215,7 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
     try {
       const saved = await adapter.setEnabled(role.id, enabled);
       applyRole(saved);
-      notify(`${role.name}已${enabled ? '启用' : '停用'}自动采集${adapter.mode === 'preview' ? '（本次预览）' : ''}。`);
+      notify(`${role.name}已${enabled ? '启用' : '停用'}。`);
     } catch { notify('切换失败，已保留原状态，请重试。'); }
     finally { setPendingToggle(null); }
   }
@@ -204,28 +226,40 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
       const saved = await adapter.saveProject(projectDraft);
       const snapshot = await adapter.load();
       setProject(saved); setRoles(snapshot.roles); close();
-      notify(adapter.mode === 'preview' ? '应用设置已在本次预览中更新。' : '应用设置已更新。');
-    } catch { setErrors({general: '保存失败，请检查应用名称和 HTTP(S) 地址后重试。'}); }
+      notify('应用设置已更新。');
+    } catch (error) { setErrors({general: error instanceof Error ? error.message : '保存失败，请检查应用设置后重试。'}); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteRole() {
+    if (!current) return;
+    setSaving(true);
+    try {
+      await adapter.deleteRole(current.id, current.revision);
+      setRoles(previous => previous.filter(role => role.id !== current.id));
+      setDeleting(false); close(); notify('角色及其本机凭据已删除。');
+    } catch (error) { setDeleting(false); setErrors({general: error instanceof Error ? error.message : '删除失败，请重试。'}); }
     finally { setSaving(false); }
   }
 
   return <div className="config-app">
     <header className="app-header">
       <div className="brand">
-        <img className="brand-logo" src="/assets/atlas-mark.png" width="48" height="48" alt=""/>
+        <img className="brand-logo" src={mark} width="48" height="48" alt=""/>
         <div><div className="brand-title">Flutter UI Atlas <span>本地配置</span></div>
           <p>配置采集身份，构建路由全貌</p></div>
       </div>
-      {adapter.mode === 'preview' && <span className="preview-label" title="更改仅在本次页面会话有效，不保存真实凭据">交互预览 · 示例账号</span>}
+      <span className="preview-label">{connected ? '已连接本机配置服务' : '配置服务已断开'}</span>
     </header>
 
+    {!connected && <div className="connection-error" role="alert">{connectionError}</div>}
     {message && <div className="toast" role="status">{message}</div>}
     <div className={`workspace ${drawer ? 'with-drawer' : ''}`}>
       <main className="role-main">
-        <nav className="breadcrumb" aria-label="配置导航"><button onClick={editProject} disabled={!loaded || saving}>应用设置</button>
+        <nav className="breadcrumb" aria-label="配置导航"><button onClick={editProject} disabled={!loaded || saving || !connected}>应用设置</button>
           <span aria-hidden="true">/</span><span aria-current="page">角色与账号</span></nav>
         <div className="section-heading"><div><h1>角色与账号</h1><p>为不同身份配置自动采集账号。</p></div>
-          <button className="button primary add-role" onClick={() => edit()} disabled={!loaded || saving}>新增角色</button></div>
+          <button className="button primary add-role" onClick={() => edit()} disabled={!loaded || saving || !connected}>新增角色</button></div>
 
         {loadError ? <div className="empty-state" role="alert">{loadError}<button className="button" onClick={() => location.reload()}>重新加载</button></div>
           : !loaded ? <p className="loading" role="status">正在读取配置…</p>
@@ -239,70 +273,79 @@ export function ConfigPage({adapter}: {adapter: ConfigAdapter}) {
               <td><code className="tag" title={role.tag}>{role.tag}</code></td>
               <td className="account-cell"><span title={role.username}>{role.username}</span></td>
               <td><span className={`login-status ${role.testStatus}`}>{statusLabels[role.testStatus]}</span></td>
-              <td><Toggle checked={role.enabled} label={`${role.name}自动采集`} disabled={pendingToggle !== null || saving}
+              <td><Toggle checked={role.enabled} label={`${role.name}自动采集`} disabled={pendingToggle !== null || saving || !connected}
                 onChange={value => void toggleRole(role, value)}/></td>
             </tr>)}</tbody>
           </table></div>
-          : <div className="empty-state"><h2>先添加一个采集角色</h2><p>设置账号后，构建时会自动以该身份登录。</p>
+          : <div className="empty-state"><h2>先添加一个采集角色</h2><p>添加角色后，可保存本机凭据并测试登录。</p>
             <button className="button primary" onClick={() => edit()}>新增角色</button></div>}
 
-        <footer className="main-footer"><p>保存后在终端运行 <code>atlas build</code>。</p>
-          {adapter.mode === 'preview' && <small>当前为交互预览，更改不会写入工程配置。</small>}</footer>
+        <footer className="main-footer"><p>配置和凭据仅保存在当前工程的本机目录。</p><small>当前版本支持配置与登录测试，按角色自动采集尚未接入。</small></footer>
       </main>
 
       {drawer && <aside className="editor" aria-label={drawer === 'project' ? '应用设置' : draft.id ? '编辑角色' : '新增角色'}>
         <div className="editor-header"><h2 ref={drawerHeading} tabIndex={-1}>{drawer === 'project' ? '应用设置' : draft.id ? '编辑角色' : '新增角色'}</h2>
-          <button className="icon-button" aria-label="关闭编辑栏" disabled={saving} onClick={() => navigate(close)}><IconX size={24} stroke={1.6}/></button></div>
+          <button className="icon-button" aria-label="关闭编辑栏" disabled={saving || !connected} onClick={() => navigate(close)}><IconX size={24} stroke={1.6}/></button></div>
         {drawer === 'role' ? <form className="editor-form" onSubmit={save} noValidate>
           <div className="editor-content">
-            <Field inputRef={firstField} name="role-tag" label="Tag" value={draft.tag} error={errors.tag} disabled={saving}
+            <Field inputRef={firstField} name="role-tag" label="Tag" value={draft.tag} error={errors.tag} disabled={saving || !connected}
               onChange={value => change('tag', value)} placeholder="例如 admin"/>
-            <Field name="role-name" label="显示名称" value={draft.name} error={errors.name} disabled={saving}
+            <Field name="role-name" label="显示名称" value={draft.name} error={errors.name} disabled={saving || !connected}
               onChange={value => change('name', value)} placeholder="例如 管理员"/>
-            <Field name="role-username" label="登录账号" value={draft.username} error={errors.username} disabled={saving}
+            <Field name="role-username" label="登录账号" value={draft.username} error={errors.username} disabled={saving || !connected}
               onChange={value => change('username', value)} placeholder="请输入用户名"/>
             <div className={`field password-field ${errors.password ? 'has-error' : ''}`}>
               <label htmlFor="role-password">登录密码</label>
               <div className="password-control"><input id="role-password" type={showPassword ? 'text' : 'password'}
-                value={draft.password} disabled={saving} autoComplete="off" aria-invalid={Boolean(errors.password)}
+                value={draft.password} disabled={saving || !connected} autoComplete="off" aria-invalid={Boolean(errors.password)}
                 aria-describedby={errors.password ? 'password-error' : 'password-help'}
                 placeholder={current?.passwordSet && !draft.clearPassword ? '已保存密码，留空保持' : '请输入登录密码'}
                 onChange={event => change('password', event.target.value)}/>
-                <button className="icon-button" type="button" disabled={saving} aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                <button className="icon-button" type="button" disabled={saving || !connected} aria-label={showPassword ? '隐藏密码' : '显示密码'}
                   aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>
                   {showPassword ? <IconEyeOff size={22} stroke={1.6}/> : <IconEye size={22} stroke={1.6}/>}</button></div>
               {errors.password && <p className="field-error" id="password-error">{errors.password}</p>}
               <div id="password-help" className="password-help">
-                {current?.passwordSet ? <button type="button" className="text-button" disabled={saving}
+                {current?.passwordSet ? <button type="button" className="text-button" disabled={saving || !connected}
                   onClick={() => {
                     invalidateLogin(); setDraft(value => ({...value, password: '', clearPassword: !value.clearPassword}));
-                  }}>{draft.clearPassword ? '撤销清除密码' : '清除已保存密码'}</button> : <span>示例密码：atlas-demo</span>}
+                  }}>{draft.clearPassword ? '撤销清除密码' : '清除已保存密码'}</button> : <span>密码仅保存在本机，列表不会回显。</span>}
               </div>
             </div>
             <section className="test-section" aria-label="登录测试"><h3>登录测试</h3>
               <div className="test-row"><span className={`test-label ${login?.status ?? ''}`} role="status">
                 {testing ? '正在测试…' : login ? login.status === 'passed' ? '测试通过' : '测试未通过' : '尚未测试'}</span>
-                <button type="button" className="button" disabled={testing || saving} onClick={() => void testLogin()}>{testing ? '测试中…' : '测试登录'}</button></div>
+                <button type="button" className="button" disabled={testing || saving || !connected} onClick={() => void testLogin()}>{testing ? '测试中…' : '测试登录'}</button></div>
               {login && <p className={`test-message ${login.status}`} role={login.status === 'failed' ? 'alert' : undefined}>{login.message}</p>}
             </section>
-            <p className="privacy-note">{adapter.mode === 'preview' ? '仅演示编辑与测试流程，不保存真实凭据。' : '凭据仅保存在本机。'}</p>
+            <p className="privacy-note">凭据以受限本机文件保存，未进行磁盘加密。</p>
+            {current && <button type="button" className="text-button danger" disabled={saving || !connected} onClick={() => setDeleting(true)}>删除角色</button>}
             {errors.general && <p className="form-error" role="alert">{errors.general}</p>}
           </div>
-          <div className="editor-actions"><button type="button" className="button" disabled={saving} onClick={() => navigate(close)}>取消</button>
-            <button type="submit" className="button primary" disabled={saving || testing}>{saving ? '保存中…' : '保存角色'}</button></div>
+          <div className="editor-actions"><button type="button" className="button" disabled={saving || !connected} onClick={() => navigate(close)}>取消</button>
+            <button type="submit" className="button primary" disabled={saving || testing || !connected || pendingToggle !== null}>{saving ? '保存中…' : '保存角色'}</button></div>
         </form> : <form className="editor-form" onSubmit={saveProject} noValidate>
           <div className="editor-content"><p className="project-intro">所有角色共用应用连接设置。</p>
-            <Field name="project-name" label="应用名称" value={projectDraft.name} disabled={saving}
+            <Field name="project-name" label="应用名称" value={projectDraft.name} disabled={saving || !connected}
               onChange={value => setProjectDraft(previous => ({...previous, name: value}))}/>
-            <Field name="project-url" label="Flutter Web 地址" value={projectDraft.baseUrl} disabled={saving}
+            <Field name="project-url" label="Flutter Web 地址" value={projectDraft.baseUrl} disabled={saving || !connected}
               onChange={value => setProjectDraft(previous => ({...previous, baseUrl: value}))}/>
-            <p className="privacy-note">应用地址变化后，需要重新测试各角色的登录。</p>
+            <label className="remote-option"><input type="checkbox" checked={projectDraft.allowRemoteUrls} disabled={saving || !connected}
+              onChange={event => setProjectDraft(previous => ({...previous, allowRemoteUrls: event.target.checked}))}/>允许访问远程应用地址</label>
+            <AuthenticationFields value={projectDraft.authentication} disabled={saving || !connected}
+              onChange={authentication => setProjectDraft(previous => ({...previous, authentication}))}/>
+            <p className="privacy-note">应用地址或登录方式变化后，需要重新测试各角色的登录。</p>
             {errors.general && <p className="form-error" role="alert">{errors.general}</p>}
-          </div><div className="editor-actions"><button className="button" type="button" disabled={saving} onClick={() => navigate(close)}>取消</button>
-            <button className="button primary" type="submit" disabled={saving}>{saving ? '保存中…' : '保存设置'}</button></div>
+          </div><div className="editor-actions"><button className="button" type="button" disabled={saving || !connected} onClick={() => navigate(close)}>取消</button>
+            <button className="button primary" type="submit" disabled={saving || !connected}>{saving ? '保存中…' : '保存设置'}</button></div>
         </form>}
       </aside>}
     </div>
+    {deleting && <div className="dialog-backdrop"><section ref={discardDialog} className="discard-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-title">
+      <h2 id="delete-title">删除角色？</h2><p>删除该角色及其本机凭据，历史图谱会保留。</p>
+      <div><button className="button" autoFocus disabled={saving} onClick={() => setDeleting(false)}>取消删除</button>
+        <button className="button primary" disabled={saving || !connected} onClick={() => void deleteRole()}>确认删除</button></div>
+    </section></div>}
     {pendingIntent && <div className="dialog-backdrop"><section ref={discardDialog} className="discard-dialog" role="alertdialog" aria-modal="true" aria-labelledby="discard-title" aria-describedby="discard-description">
       <h2 id="discard-title">放弃未保存的更改？</h2><p id="discard-description">当前编辑还没有保存，离开后将丢弃这些更改。</p>
       <div><button className="button" autoFocus onClick={() => setPendingIntent(null)}>继续编辑</button>

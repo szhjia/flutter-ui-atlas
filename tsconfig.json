@@ -19,7 +19,7 @@
   },
   "include": [
     "src",
-    "packages/viewer/src", "packages/capture/adapter.ts",
-    "tests/canvas", "tests/browser"
+    "packages/viewer/src", "packages/capture/adapter.ts", "packages/config-ui/src", "packages/cli/config-contract.ts",
+    "tests/canvas", "tests/browser", "tests/config"
   ]
 }

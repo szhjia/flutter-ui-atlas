@@ -12,8 +12,11 @@ import {initAtlas} from './init.mjs';
 import {localWebDiscovery} from './local-web.mjs';
 import {serveViewer} from './view-server.mjs';
 import {assertLoopback} from '../capture/web-boundary.mjs';
+import {configCommand} from './config-command.mjs';
+import {launchManagedBrowser} from './managed-browser.mjs';
 
 const usage = `用法：
+  atlas config [--config <工程 .atlas/atlas.yaml>] [--port <端口，0 为自动>] [--no-open]
   atlas init [--name <工程名>] [--url <Flutter Web 地址>] [--port <画布端口>] [--ready-text <就绪文字>] [--yes]
   atlas init --adapter-config <本地 MJS 配置> [--name <工程名>] [--port <画布端口>] [--yes]
   atlas build --url <本地 Flutter Web 地址> [--ready-text <就绪文字>]
@@ -45,8 +48,7 @@ export function resolveBrowserChannel(config = {}, env = process.env) {
 }
 
 async function openChrome(headless, channel) {
-  const {chromium} = await import('playwright');
-  return chromium.launch({channel, headless});
+  return launchManagedBrowser({channel, headless});
 }
 
 const defaultViewport = {width: 393, height: 852};
@@ -110,6 +112,7 @@ export async function runAtlas(args = process.argv.slice(2)) {
         version: {type: 'boolean'}, journeys: {type: 'boolean'},
         url: {type: 'string'}, 'ready-text': {type: 'string'}, port: {type: 'string'},
         name: {type: 'string'}, yes: {type: 'boolean', short: 'y'}, 'adapter-config': {type: 'string'},
+        'no-open': {type: 'boolean'},
       },
     });
     if (values.help) {
@@ -122,6 +125,13 @@ export async function runAtlas(args = process.argv.slice(2)) {
       return 0;
     }
     const [command] = positionals;
+    if (command === 'config') {
+      if (positionals.length !== 1 || values.journeys || values.name !== undefined || values.yes ||
+          values.url !== undefined || values['ready-text'] !== undefined || values['adapter-config'] !== undefined) throw Error(usage);
+      await configCommand(values, () => openChrome(true, resolveBrowserChannel()));
+      return 0;
+    }
+    if (values['no-open'] !== undefined) throw Error(usage);
     if (command === 'init') {
       if (positionals.length !== 1 || values.config !== undefined || values.journeys) throw Error(usage);
       const file = await initAtlas(values);

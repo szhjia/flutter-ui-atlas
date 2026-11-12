@@ -40,4 +40,9 @@ test('端到端：打包脚本退出码 0、生成 tgz、冒烟在 stage 内通�
   const [tgz] = (await readdir(destination)).filter(name => name.endsWith('.tgz'));
   assert.ok(tgz, '应生成 tarball');
   assert.ok((await stat(join(destination, tgz))).size > 0);
+  const contents = spawnSync('tar', ['-tzf', join(destination, tgz)], {encoding: 'utf8'});
+  assert.equal(contents.status, 0);
+  assert.match(contents.stdout, /package\/dist\/config.html/);
+  assert.match(contents.stdout, /package\/packages\/cli\/config-server.mjs/);
+  assert(!contents.stdout.includes('prototypes/'));
 });

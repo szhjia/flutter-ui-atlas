@@ -1,3 +1,3 @@
 import {defineConfig} from 'vitest/config';
 import react from '@vitejs/plugin-react';
-export default defineConfig({plugins:[react()],test:{include:['tests/canvas/**/*.test.{ts,tsx}','tests/entry/**/*.test.{ts,tsx}'],environment:'jsdom'}});
+export default defineConfig({plugins:[react()],test:{include:['tests/canvas/**/*.test.{ts,tsx}','tests/entry/**/*.test.{ts,tsx}','tests/config/**/*.test.{ts,tsx}'],environment:'jsdom'}});

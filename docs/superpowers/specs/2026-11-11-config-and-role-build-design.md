@@ -1,8 +1,8 @@
 # Atlas 本地配置页与多角色自动采集设计
 
-日期：2026-11-11。状态：产品方向及配置页方向 2 已确认，已提供独立 React 交互模板；CLI 服务、真实凭据保存与多角色采集尚未实现，不代表现有 CLI 已提供这些命令和字段。
+日期：2026-11-11。状态：config 正式接入已实施，提供本机服务、配置与凭据保存、通用表单/MJS 真实登录测试；多角色自动采集与 Viewer 收敛仍待实施。验收证据见《配置页正式接入验证记录》。
 
-页面模板位于 `prototypes/atlas-config/`：左侧角色表格、右侧编辑栏，通过 `ConfigAdapter` 注入数据。当前演示适配器仅保留内存状态；具体交互与视觉验收见该目录的 `README.md` 和 `design-qa.md`。
+正式页面位于 `packages/config-ui/`：左侧角色表格、右侧编辑栏，通过 `ConfigAdapter` 连接本机 HTTP 服务。已选设计图与历史验收记录迁入 docs；独立原型在正式验收后移除。
 
 ## 已确认的产品方向
 
@@ -14,7 +14,7 @@
 
 ## 现状与因果边界
 
-当前 `packages/cli/index.mjs` 仅提供 init/build/capture/record/view；`config` 是配置文件参数，尚无同名子命令。
+设计时 `packages/cli/index.mjs` 尚无 config 子命令；本轮已增加正式入口，后续所述采集链路缺口仍存在。
 
 `packages/capture/declarative.mjs` 每次 `open()` 都创建新浏览器上下文，未传入认证状态；`role` 仅为页面标签，`matchesState()` 只核对路由和可见内容。`DiscoveryAdapter` 同样没有统一的账号输入与认证生命周期接口。`packages/capture/discovery.mjs` 的历史复用条件未单独绑定账号及角色配置。
 
@@ -116,4 +116,4 @@ Viewer 继续只读产物，不暴露凭据接口。移除实时页签、iframe�
 - 服务边界：跨源写入拒绝、敏感文件不可被 Viewer 获取、配置读取不返回密码、并发保存与构建使用明确配置快照。
 - 打包验收：全局安装包包含配置页及服务；在独立 Flutter 工程运行 config/build/view，不依赖源码仓库的 node_modules 或业务 fixture。
 
-实现前仍需确定的工程取舍：本机受限凭据文件是否满足首版要求，或是否必须直接接系统凭据库；路由适配器的首批支持范围。产品命令分工与 Web 配置角色方向按本轮用户要求确定。
+首版已确认使用受限本机凭据文件，并支持通用表单＋MJS 认证扩展。本轮只交付 config；多角色 build、路由适配及 Viewer 收敛按后续计划实施。

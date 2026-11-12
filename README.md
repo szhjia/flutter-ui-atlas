@@ -63,6 +63,16 @@ pnpm atlas view --config examples/atlas.config.json
 
 打开 `http://127.0.0.1:60200/`。示例使用普通 `main.dart` 构建，配置在 [examples/atlas.config.json](examples/atlas.config.json)。产物默认写到配置所在目录的 `.atlas/generated/`。用 `output` 可继续读取已有的 v1 采集目录。失败时当前地图继续指向最近一次成功采集，画布提示最近失败并提供报告。
 
+## 本机配置页
+
+在 Flutter 工程根目录或子目录运行 `atlas config`，打开角色与登录配置页。没有官方配置时首次保存创建 `.atlas/atlas.yaml`；可用 `--port 0` 自动分配端口，`--no-open` 仅打印入口。
+
+支持应用设置、角色新增/编辑/独立启停/删除、密码保持/清除，以及通用表单和可信本地 MJS 的真实登录测试。账号和密码保存在 `.atlas/local/credentials.json`，目录 0700、文件 0600，并自动维护 Git 忽略；文件内容未加密，密码不会由读取接口回显。不要提交 `.atlas/local/`。
+
+现有官方 YAML 保留未知设置和注释。直接旧 JSON/MJS 配置不会被网页自动改写，先迁入官方 YAML；MJS 可继续由 `adapterConfig` 引用。登录协议、MJS 契约及来源限制见 [协议与适配接口](docs/协议与适配接口.md#本机配置服务config-v1)。
+
+当前阶段提供配置保存与真实登录测试；现有 `atlas build` 尚不消费新增角色凭据，多角色自动采集将在后续接入。
+
 ## 接入其他 Flutter Web 应用
 
 复制示例 JSON 到项目自己的开发工具目录，配置 `baseUrl`、页面 ID、路由和能区分页面状态的可见内容。使用 `routeMode: "pathname"` 支持路径路由，子路径部署（如 `https://host/app/`）需加 `routePrefix: "/app"`；`baseUrl` 默认限回环地址，局域网或远程开发服务需设 `allowRemoteUrls: true`。需要复现的页面操作通过连线的 `click` 登记；省略时只展示声明关系。启动项目自身的 Web 服务，再运行 Atlas 两条命令。可从任意目录运行 `atlas build --config <配置绝对路径>`。
