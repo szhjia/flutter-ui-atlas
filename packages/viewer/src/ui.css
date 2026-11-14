@@ -1,0 +1,85 @@
+/* Omit Preflight: existing canvas components retain their browser and CSS defaults. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import 'tw-animate-css';
+
+@custom-variant data-open (&[data-state='open']);
+@custom-variant data-closed (&[data-state='closed']);
+@custom-variant data-checked (&[data-state='checked']);
+@custom-variant data-horizontal (&[data-orientation='horizontal']);
+@custom-variant data-vertical (&[data-orientation='vertical']);
+
+@layer base {
+  :where([data-slot='button'], [data-slot='checkbox']) {
+    background: transparent;
+  }
+  :where([data-slot='button'], [data-slot='input'], [data-slot='native-select'], [data-slot='select-trigger']) {
+    color: inherit;
+    margin: 0;
+  }
+}
+
+/* Local defaults for migrated primitives; no canvas-wide reset. */
+[data-slot='button'],
+[data-slot='input'],
+[data-slot='native-select'],
+[data-slot='select-trigger'],
+[data-slot='select-content'],
+[data-slot='popover-content'],
+[data-slot='tooltip-content'] {
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+[data-slot='button'] {
+  cursor: pointer;
+}
+[data-slot='button']:disabled {
+  cursor: default;
+}
+[data-slot='select-content'] * {
+  box-sizing: border-box;
+}
+
+@theme inline {
+  /* Viewer is desktop-only; window sizing is handled by its explicit layout rules. */
+  --breakpoint-*: initial;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--background);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--secondary);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--primary);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+  --text-sm: 0.8125rem;
+}
+
+:root {
+  --background: #fff;
+  --foreground: #263444;
+  --popover: #fff;
+  --primary: #245674;
+  --primary-foreground: #fff;
+  --secondary: #f7f8fa;
+  --muted-foreground: #738091;
+  --accent: #eef5fa;
+  --destructive: #b42318;
+  --border: #dce1e8;
+  --ring: #548cc4;
+  --radius: 0.4375rem;
+}

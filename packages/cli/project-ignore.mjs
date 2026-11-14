@@ -53,7 +53,8 @@ export async function ensureAtlasIgnored(projectRoot) {
   try {
     await git(projectRoot, ['rev-parse', '--is-inside-work-tree']);
   } catch (error) {
-    if (error.code === 128 && /not a git repository/.test(error.stderr ?? '')) repository = false;
+    if (error.code === 'ENOENT' || (error.code === 128 && /not a git repository/.test(error.stderr ?? '')))
+      repository = false;
     else throw Error(`无法检查 Atlas 的 Git 跟踪状态：${error.message}`, {cause: error});
   }
   if (repository) {

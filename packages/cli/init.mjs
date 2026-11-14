@@ -1,3 +1,4 @@
+import {ensureApplicationIdentity} from './application-identity.mjs';
 import {lstat, mkdir, open, readFile, unlink} from 'node:fs/promises';
 import {basename, dirname, extname, join, relative, resolve} from 'node:path';
 import {createInterface} from 'node:readline/promises';
@@ -134,5 +135,6 @@ export async function initAtlas(options, {cwd = process.cwd(), input = stdin, ou
     );
     throw error;
   }
+  await ensureApplicationIdentity(directory);
   return file;
 }

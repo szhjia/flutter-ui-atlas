@@ -1,3 +1,4 @@
+import {readWorkspaceManifest} from '../packages/cli/workspace-build.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile, writeFile} from 'node:fs/promises';
@@ -22,10 +23,7 @@ for (const field of ['profiles', 'requireObservedEdges', 'output'])
     else if (field === 'output') current.output = 'other-output';
     else current.requireObservedEdges = !current.requireObservedEdges;
     await writeFile(f.file, stringify(current));
-    await assert.rejects(
-      buildStandard(input, profiles, () => launchManagedBrowser()),
-      /配置.*变化|重新运行/
-    );
+    assert.equal(await buildStandard(input, profiles, () => launchManagedBrowser()), 1);
     await assert.rejects(readFile(join(input.output, 'phone/manifest.json')), /ENOENT/);
   });
 test('实时会话拒绝源码已变化的成功图谱', async t => {
@@ -39,7 +37,7 @@ test('实时会话拒绝源码已变化的成功图谱', async t => {
   const input = await inputFor(f),
     profile = selectProfiles(input.config)[0];
   assert.equal(await buildStandard(input, [profile], () => launchManagedBrowser()), 0);
-  const manifest = JSON.parse(await readFile(join(input.output, 'manifest.json'), 'utf8'));
+  const manifest = await readWorkspaceManifest(input.output);
   await writeFile(source, 'changed');
   const manager = await standardLiveSessions(input, profile, () => launchManagedBrowser());
   t.after(() => manager.shutdown());

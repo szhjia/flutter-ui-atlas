@@ -6,14 +6,24 @@ const readyTimeout = 15000;
 /** entryMode 配置路径经 allowRemote 转发 allowRemoteUrls；--url 隐式路径保持严格回环。 */
 export function localWebDiscovery(value, readyText, {allowRemote = false, label = '--url'} = {}) {
   const address = webUrl(value);
-  assertLoopback(address, {allowRemote, message: label === '--url'
-    ? '--url 必须是本地 Flutter Web 开发服务的回环地址。'
-    : `${label} 必须是本地回环地址；如需访问局域网或远程开发服务，在配置中设置 allowRemoteUrls: true。`});
+  assertLoopback(address, {
+    allowRemote,
+    message:
+      label === '--url'
+        ? '--url 必须是本地 Flutter Web 开发服务的回环地址。'
+        : `${label} 必须是本地回环地址；如需访问局域网或远程开发服务，在配置中设置 allowRemoteUrls: true。`
+  });
   const route = address.hash.startsWith('#/') ? address.hash.slice(1).split('?')[0] : address.pathname;
   const screen = {
-    id: 'entry', role: '默认', group: '页面', state: '默认状态',
-    title: readyText ?? '入口页面', entry: address.href, route, direct: true,
-    discoverySource: '命令行指定入口',
+    id: 'entry',
+    role: 'Default',
+    group: 'Screens',
+    state: 'Default',
+    title: readyText ?? 'Entry screen',
+    entry: address.href,
+    route,
+    direct: true,
+    discoverySource: 'CLI entry URL'
   };
 
   return {
@@ -24,7 +34,13 @@ export function localWebDiscovery(value, readyText, {allowRemote = false, label 
       try {
         const page = await context.newPage();
         await page.addInitScript(() => {
-          window.addEventListener('flutter-first-frame', () => { window.__atlasFlutterFirstFrame = true; }, {once: true});
+          window.addEventListener(
+            'flutter-first-frame',
+            () => {
+              window.__atlasFlutterFirstFrame = true;
+            },
+            {once: true}
+          );
         });
         await page.route('**/*', async route => {
           const request = route.request();
@@ -41,16 +57,19 @@ export function localWebDiscovery(value, readyText, {allowRemote = false, label 
         if (page.url() !== address.href) throw Error(`入口被重定向：期望 ${address.href}，实际 ${page.url()}`);
         const content = readyText && page.getByText(readyText, {exact: true}).filter({visible: true}).first();
         if (content) {
-          const enable = page.locator('flt-semantics-placeholder')
+          const enable = page
+            .locator('flt-semantics-placeholder')
             .and(page.getByRole('button', {name: 'Enable accessibility', exact: true}));
           const deadline = Date.now() + readyTimeout;
           try {
             await content.or(enable).first().waitFor({state: 'visible', timeout: readyTimeout});
-            if (!await content.isVisible() && await enable.isVisible()) {
+            if (!(await content.isVisible()) && (await enable.isVisible())) {
               // 引擎会先创建无障碍入口，再装载 Flutter 视图和语义树。
-              await page.waitForFunction(() => window.__atlasFlutterFirstFrame ||
-                document.querySelector('flutter-view flt-semantics-host'), null,
-              {timeout: Math.max(1, deadline - Date.now())});
+              await page.waitForFunction(
+                () => window.__atlasFlutterFirstFrame || document.querySelector('flutter-view flt-semantics-host'),
+                null,
+                {timeout: Math.max(1, deadline - Date.now())}
+              );
               await enable.dispatchEvent('click', {}, {timeout: Math.max(1, deadline - Date.now())});
             }
             await content.waitFor({state: 'visible', timeout: Math.max(1, deadline - Date.now())});
@@ -61,14 +80,18 @@ export function localWebDiscovery(value, readyText, {allowRemote = false, label 
           }
         }
         return {
-          page, errors, close: () => context.close(),
-          observe: async () => content && page.url() === address.href &&
-            await content.isVisible() && page.url() === address.href ? screen : null,
+          page,
+          errors,
+          close: () => context.close(),
+          observe: async () =>
+            content && page.url() === address.href && (await content.isVisible()) && page.url() === address.href
+              ? screen
+              : null
         };
       } catch (error) {
         await context.close();
         throw error;
       }
-    },
+    }
   };
 }

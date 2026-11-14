@@ -10,15 +10,15 @@ export const defaultEntryConfig: AtlasViewerConfig = {
   artifactPaths: ['/generated'],
   shell: {title: 'Flutter UI Atlas'},
   layoutKey: 'atlas-default:phone-393x852:v1',
-  captureHint: 'atlas build --config <配置文件>',
+  captureHint: 'atlas build --config <config-file>',
   preview: {routeMode: 'hash', localOnly: true}
 };
 
 function invalid(reason?: unknown): EntryConfigResult {
-  const detail = reason instanceof Error ? `（${reason.message}）` : '';
+  const detail = reason instanceof Error ? ` (${reason.message})` : '';
   return {
     config: null,
-    error: `画布配置解析失败${detail}。请检查页面 #atlas-config 中的 JSON 配置，修正后重新打开画布。`
+    error: `Could not parse canvas configuration${detail}. Check the JSON in #atlas-config, correct it, and reload.`
   };
 }
 

@@ -1,7 +1,18 @@
-import {memo, useCallback, useEffect, useId, useMemo, useRef, useState} from 'react';
+import {accountWorkspaces, type AccountWorkspace} from './workspaces';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type ButtonHTMLAttributes
+} from 'react';
+import {PanelRight, RefreshCw} from 'lucide-react';
 import {
   Background,
-  Controls,
   Handle,
   MiniMap,
   Position,
@@ -19,8 +30,18 @@ import {type AppMapManifest, type CaptureAttempt, type MapScreen, visibleEdges, 
 
 import {useCanvasController, isEditingTarget} from './canvas/useCanvasController';
 import {CANVAS_ZOOM} from './canvas/constants';
+import {CanvasChrome} from './canvas/CanvasChrome';
+import {useCanvasWorkspace} from './canvas/useCanvasWorkspace';
+import {clampZoom, constrainViewport, fitViewport, panExtent} from './canvas/viewport';
+import type {ArrangementMode} from './canvas/arrange';
 import {CanvasToolbar} from './canvas/CanvasToolbar';
 import {GroupSelect} from './canvas/GroupSelect';
+import {HeaderMenu} from './header/HeaderMenu';
+import {Button} from './components/ui/button';
+import {Input} from './components/ui/input';
+import {NativeSelect, NativeSelectOption} from './components/ui/native-select';
+import {Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue} from './components/ui/select';
+import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from './components/ui/tooltip';
 import {AtlasEdge} from './canvas/AtlasEdge';
 import {EdgeLabels} from './canvas/EdgeLabels';
 import {routeEdges} from './canvas/route-edges';
@@ -53,21 +74,15 @@ export type {
 type ScreenNode = Node<{screen: MapScreen; locked: boolean; ghost: boolean; toggle: () => void}, 'screen'>;
 function ScreenCard({data, selected}: NodeProps<ScreenNode>) {
   const s = data.screen;
-  if (data.ghost) return <div className="atlas-ghost">筛选隐藏 · {s.title}</div>;
+  if (data.ghost) return <div className="atlas-ghost">Filtered out · {s.title}</div>;
   return (
     <article className={`map-card ${selected ? 'is-selected' : ''}`}>
-      <Handle type="target" position={Position.Left} />
-      <div className="map-card-label">
-        <span>
-          {s.role} · {s.group}
-        </span>
-        <span>{s.status === 'captured' ? '已采集' : s.status === 'pending' ? '待采集' : '失败'}</span>
-      </div>
+      <Handle type="target" position={Position.Left} isConnectable={false} />
       <h2>
-        {s.title}
+        <span title={s.pageName ?? s.title}>{s.pageName ?? s.title}</span>
         <button
           className="atlas-lock nodrag nopan"
-          aria-label={`${data.locked ? '解锁' : '锁定'}${s.title}`}
+          aria-label={`${data.locked ? 'Unlock ' : 'Lock '}${s.title}`}
           onClick={e => {
             e.stopPropagation();
             data.toggle();
@@ -76,17 +91,20 @@ function ScreenCard({data, selected}: NodeProps<ScreenNode>) {
           {data.locked ? '●' : '○'}
         </button>
       </h2>
+      <div className="map-card-route" title={s.route}>
+        {s.route}
+      </div>
       {s.image ? (
-        <img src={s.image} alt={`${s.role} · ${s.title}真实页面`} draggable={false} />
+        <img src={s.image} alt={`${s.role} · ${s.title} screenshot`} draggable={false} />
       ) : (
         <div className="map-capture-error">
-          {s.status === 'pending' ? '待采集' : '采集失败'}
+          {s.status === 'pending' ? 'Pending' : 'Capture failed'}
           <br />
           {s.error}
         </div>
       )}
-      <footer>{s.state}</footer>
-      <Handle type="source" position={Position.Right} />
+
+      <Handle type="source" position={Position.Right} isConnectable={false} />
     </article>
   );
 }
@@ -111,6 +129,7 @@ export interface AtlasViewerAdapter {
   closeLiveSession?(id: string): Promise<void>;
   liveSessionStatus?(): Promise<AtlasLiveSessionStatus>;
   sourceFingerprint?(): Promise<string | null>;
+  workspaceFreshness?(accountId: string, revisionId: string): Promise<boolean | null>;
   title?: string;
   homeUrl?: string;
   captureHint?: string;
@@ -130,46 +149,68 @@ function BrandLogo({url, text}: {url?: string; text?: string}) {
   );
 }
 
+function HeaderIconButton({label, children, ...props}: ButtonHTMLAttributes<HTMLButtonElement> & {label: string}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant={props['aria-expanded'] ? 'secondary' : 'outline'}
+          size="icon"
+          className="map-header-icon"
+          aria-label={label}
+          {...props}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={8}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ShellHeader({
   presentation,
-  map,
-  refresh
+  filters,
+  actions
 }: {
   presentation: ViewerPresentation;
-  map?: AppMapManifest;
-  refresh: () => void;
+  filters?: ReactNode;
+  actions?: ReactNode;
 }) {
   const shell = presentation.shell;
   const title = shell?.title ?? presentation.title ?? 'UI Atlas';
-  const links =
-    shell?.headerLinks ?? (presentation.homeUrl ? [{label: '返回工作台 ↗', href: presentation.homeUrl}] : []);
+  const links = (
+    shell?.headerLinks ?? (presentation.homeUrl ? [{label: 'Back to workspace ↗', href: presentation.homeUrl}] : [])
+  ).filter(link => safeLink(link.href));
   return (
-    <header className="map-topbar">
-      <div className="map-brand">
-        <BrandLogo key={shell?.logoUrl} url={shell?.logoUrl} text={shell?.logoText} />
-        <h1 title={title}>{title}</h1>
-      </div>
-      <div className="map-top-actions">
-        {map && (
-          <>
-            <span>
-              {map.screens.filter(screen => screen.status === 'captured').length} 个已采集页面
-              {map.discovery &&
-                ` · ${map.screens.filter(screen => screen.status === 'pending').length} 个待采集`} ·{' '}
-              {map.edges.filter(edge => edge.status === 'observed').length} 条已验证连线
-            </span>
-            <button onClick={refresh}>刷新采集结果</button>
-          </>
+    <TooltipProvider delayDuration={350}>
+      <header className="map-topbar">
+        <div className="map-brand">
+          <BrandLogo key={shell?.logoUrl} url={shell?.logoUrl} text={shell?.logoText} />
+          <h1 title={title}>{title}</h1>
+        </div>
+        {filters && <div className="map-header-filters">{filters}</div>}
+        {(actions || links.length > 0) && (
+          <div className="map-header-actions">
+            {actions}
+            {links.length > 0 && (
+              <HeaderMenu label="Links">
+                <nav className="map-header-links" aria-label="Project links">
+                  {links.map((link, index) => (
+                    <Button key={index} asChild variant="ghost" className="justify-start">
+                      <a href={link.href}>{link.label}</a>
+                    </Button>
+                  ))}
+                </nav>
+              </HeaderMenu>
+            )}
+          </div>
         )}
-        {links
-          .filter(link => safeLink(link.href))
-          .map((link, index) => (
-            <a key={index} href={link.href}>
-              {link.label}
-            </a>
-          ))}
-      </div>
-    </header>
+      </header>
+    </TooltipProvider>
   );
 }
 
@@ -179,10 +220,10 @@ function AttemptNotice({attempt, hasMap}: {attempt: CaptureAttempt | null; hasMa
   if (attempt?.status !== 'failed') return null;
   return (
     <div className="atlas-notice" role="status">
-      最近采集失败{hasMap ? '，当前显示上一次成功结果' : ''}。{attempt.error?.split('\n', 1)[0]}{' '}
+      Latest capture failed{hasMap ? ' — showing the last successful map' : ''}. {attempt.error?.split('\n', 1)[0]}{' '}
       {attempt.report && safeLink(attempt.report) && (
         <a href={attempt.report} target="_blank" rel="noreferrer">
-          查看采集报告 ↗
+          View capture report ↗
         </a>
       )}
     </div>
@@ -196,8 +237,14 @@ function MapCanvas({
   attempt,
   loadError,
   refresh,
-  adapter
+  adapter,
+  accounts,
+  accountId,
+  selectAccount
 }: {
+  accounts: AccountWorkspace[];
+  accountId: string;
+  selectAccount: (id: string) => void;
   map: AppMapManifest;
   attempt: CaptureAttempt | null;
   loadError: string;
@@ -268,27 +315,46 @@ function MapCanvas({
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const inspectorId = useId();
-  const inspectorAction = collapsed ? '展开详情' : '收起详情';
+  const inspectorAction = collapsed ? 'Show details' : 'Hide details';
   const [source, setSource] = useState<string | null>(null);
+  const [inputChanged, setInputChanged] = useState<boolean | null>(map.configurationChanged ?? null);
 
   const flow = useReactFlow<ScreenNode>();
+  const workspace = useCanvasWorkspace(!!live);
+  const [layoutMode, setLayoutMode] = useState<ArrangementMode>(() => {
+    try {
+      const saved = localStorage.getItem(`${adapter.layoutKey}:mode`);
+      return saved === 'horizontal' || saved === 'vertical' ? saved : 'balanced';
+    } catch {
+      return 'balanced';
+    }
+  });
   useEffect(() => {
     let current = true;
-    const check = () =>
-      (adapter.sourceFingerprint?.() ?? Promise.resolve(null))
-        .then(value => {
-          if (current) setSource(value);
-        })
-        .catch(() => {
+    const check = async () => {
+      if (map.schemaVersion === 2) {
+        try {
+          const changed = await adapter.workspaceFreshness?.(accountId, map.revisionId ?? '');
+          if (current) setInputChanged(changed ?? map.configurationChanged ?? null);
+        } catch {
+          if (current) setInputChanged(null);
+        }
+      } else {
+        try {
+          const value = await adapter.sourceFingerprint?.();
+          if (current) setSource(value ?? null);
+        } catch {
           if (current) setSource(null);
-        });
+        }
+      }
+    };
     void check();
     const timer = window.setInterval(check, 30000);
     return () => {
       current = false;
       window.clearInterval(timer);
     };
-  }, [adapter]);
+  }, [adapter, map.revisionId, accountId, map.configurationChanged, map.schemaVersion]);
   const verifiedIds = useMemo(
     () => new Set(map.edges.filter(edge => edge.status === 'observed').flatMap(edge => [edge.source, edge.target])),
     [map.edges]
@@ -309,6 +375,41 @@ function MapCanvas({
   const visibleIds = useMemo(() => new Set(screens.map(s => s.id)), [screens]);
   const controller = useCanvasController({map, layoutKey: adapter.layoutKey, visibleIds});
   const {nodes: geometry} = controller;
+  const extent = panExtent(geometry);
+  const fit = (items = geometry) =>
+    controller.onViewportCommit(
+      constrainViewport(
+        fitViewport(
+          items.filter(n => !n.hidden),
+          workspace.size
+        ),
+        workspace.size,
+        panExtent(items)
+      )
+    );
+  const arrange = (mode: ArrangementMode) => {
+    const result = controller.arrangeVisible({
+      mode,
+      aspectRatio: workspace.size.width / Math.max(1, workspace.size.height)
+    });
+    if (result) fit(result);
+  };
+  const zoomTo = (zoom: number) => {
+    const current = flow.getViewport();
+    const nextZoom = clampZoom(zoom);
+    const ratio = nextZoom / current.zoom;
+    controller.onViewportCommit(
+      constrainViewport(
+        {
+          x: workspace.size.width / 2 - (workspace.size.width / 2 - current.x) * ratio,
+          y: workspace.size.height / 2 - (workspace.size.height / 2 - current.y) * ratio,
+          zoom: nextZoom
+        },
+        workspace.size,
+        extent
+      )
+    );
+  };
   const controllerRef = useRef(controller);
   controllerRef.current = controller;
   const toggles = useRef(new Map<string, () => void>());
@@ -317,32 +418,45 @@ function MapCanvas({
     return toggles.current.get(id)!;
   };
   const active = geometry.find(n => n.id === controller.draggingId);
+  const nodeCache = useRef(new Map<string, ScreenNode>());
+  const screenById = useMemo(() => new Map(map.screens.map(s => [s.id, s])), [map.screens]);
   const nodes: ScreenNode[] = geometry
-    .filter(
-      n =>
-        map.screens.some(s => s.id === n.id) &&
-        (!n.hidden || (active && Math.hypot(n.x - active.x, n.y - active.y) < 1400))
-    )
-    .map(n => ({
-      id: n.id,
-      type: 'screen',
-      data: {
-        screen: map.screens.find(s => s.id === n.id)!,
-        locked: n.locked,
-        ghost: n.hidden,
-        toggle: lockAction(n.id)
-      },
-      position: {x: n.x, y: n.y},
-      measured: {width: n.width, height: n.height},
-      selected: n.id === selectedId,
-      draggable: !n.locked && !n.hidden,
-      selectable: !n.hidden,
-      focusable: !n.hidden,
-      style: n.hidden ? {width: n.width, height: n.height, pointerEvents: 'none'} : undefined
-    }));
-  const shownEdges = showEdges
-    ? visibleEdges(map.edges, screens).filter(edge => scope !== 'flow' || edge.status === 'observed')
-    : [];
+    .filter(n => screenById.has(n.id) && (!n.hidden || (active && Math.hypot(n.x - active.x, n.y - active.y) < 1400)))
+    .map(n => {
+      const screen = screenById.get(n.id)!;
+      const old = nodeCache.current.get(n.id);
+      if (
+        old &&
+        old.data.screen === screen &&
+        old.data.locked === n.locked &&
+        old.data.ghost === n.hidden &&
+        old.position.x === n.x &&
+        old.position.y === n.y &&
+        old.measured?.width === n.width &&
+        old.measured?.height === n.height &&
+        old.selected === (n.id === selectedId)
+      )
+        return old;
+      const node: ScreenNode = {
+        id: n.id,
+        type: 'screen',
+        data: {screen, locked: n.locked, ghost: n.hidden, toggle: lockAction(n.id)},
+        position: {x: n.x, y: n.y},
+        measured: {width: n.width, height: n.height},
+        selected: n.id === selectedId,
+        draggable: !n.locked && !n.hidden,
+        selectable: !n.hidden,
+        focusable: !n.hidden,
+        style: n.hidden ? {width: n.width, height: n.height, pointerEvents: 'none'} : undefined
+      };
+      nodeCache.current.set(n.id, node);
+      return node;
+    });
+  const shownEdges = useMemo(
+    () =>
+      showEdges ? visibleEdges(map.edges, screens).filter(edge => scope !== 'flow' || edge.status === 'observed') : [],
+    [showEdges, map.edges, screens, scope]
+  );
   const cache = useRef<{nodes: CanvasNode[]; routes: RoutedEdge[]; signature: string}>({
     nodes: [],
     routes: [],
@@ -364,25 +478,52 @@ function MapCanvas({
     changedIds
   );
   cache.current = {nodes: geometry, routes, signature};
-  const edges: Edge[] = shownEdges.map(e => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    type: 'atlas',
-    data: {points: routes.find(r => r.id === e.id)?.points},
-    markerEnd: {type: MarkerType.ArrowClosed, color: edgeColor(e.status)},
-    style: {
-      stroke: edgeColor(e.status),
-      strokeWidth: e.id === selectedEdge ? 2.5 : 1.5,
-      strokeDasharray: e.status === 'observed' ? undefined : '6 5'
-    }
-  }));
+  const edgeCache = useRef(new Map<string, Edge>());
+  const routeById = new Map(routes.map(r => [r.id, r]));
+  const edges: Edge[] = shownEdges.map(e => {
+    const points = routeById.get(e.id)?.points,
+      color = edgeColor(e.status),
+      width = e.id === selectedEdge ? 2.5 : 1.5,
+      dash = e.status === 'observed' ? undefined : '6 5';
+    const old = edgeCache.current.get(e.id);
+    if (
+      old &&
+      old.source === e.source &&
+      old.target === e.target &&
+      old.data?.points === points &&
+      old.style?.stroke === color &&
+      old.style?.strokeWidth === width &&
+      old.style?.strokeDasharray === dash
+    )
+      return old;
+    const edge: Edge = {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: 'atlas',
+      data: {points},
+      markerEnd: {type: MarkerType.Arrow, color},
+      style: {stroke: color, strokeWidth: width, strokeDasharray: dash}
+    };
+    edgeCache.current.set(e.id, edge);
+    return edge;
+  });
   const focusedIds = new Set(
     shownEdges.filter(e => e.id === selectedEdge || e.source === selectedId || e.target === selectedId).map(e => e.id)
   );
   useEffect(() => {
-    void flow.setViewport(controller.viewport);
-  }, [controller.viewport.x, controller.viewport.y, controller.viewport.zoom]);
+    void flow.setViewport(constrainViewport(controller.viewport, workspace.size, extent));
+  }, [
+    controller.viewport.x,
+    controller.viewport.y,
+    controller.viewport.zoom,
+    workspace.size.width,
+    workspace.size.height,
+    extent[0][0],
+    extent[0][1],
+    extent[1][0],
+    extent[1][1]
+  ]);
   const edgeDetail = map.edges.find(e => e.id === selectedEdge);
   const choose = useCallback(
     (id: string) => {
@@ -402,7 +543,8 @@ function MapCanvas({
     setSelectedId(null);
     setLive(null);
   };
-  const stale = source !== null && source !== map.sourceFingerprint;
+  const stale =
+    inputChanged === true || (map.schemaVersion === 1 && source !== null && source !== map.sourceFingerprint);
   async function openPreview(screen: MapScreen) {
     cancelManaged();
     setPreviewError('');
@@ -434,7 +576,7 @@ function MapCanvas({
     }
     try {
       const url = adapter.previewUrl?.(screen, `map-live-${crypto.randomUUID()}`);
-      if (!url) throw Error('当前页面未配置实时预览地址');
+      if (!url) throw Error('No live preview URL is configured for this screen.');
       setLive({id: screen.id, url});
       setPreviewError('');
     } catch (error) {
@@ -445,7 +587,12 @@ function MapCanvas({
     <main
       className="app-map"
       onKeyDownCapture={e => {
-        if (isEditingTarget(e.target)) return;
+        if (
+          isEditingTarget(e.target) ||
+          (e.target instanceof Element &&
+            e.target.closest('.map-topbar, [data-atlas-header], [data-atlas-canvas-controls]'))
+        )
+          return;
         if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
@@ -468,110 +615,118 @@ function MapCanvas({
         }
       }}
     >
-      <ShellHeader presentation={adapter} map={map} refresh={refreshMap} />
+      <ShellHeader
+        presentation={adapter}
+        filters={
+          <>
+            <Input
+              className="map-header-search"
+              aria-label="Search screens"
+              placeholder="Search screens or routes…"
+              value={query}
+              onChange={event => resetFilters(role, group, event.target.value)}
+            />
+            <Select value={accountId} onValueChange={selectAccount}>
+              <SelectTrigger
+                className="map-account-select"
+                aria-label="Account"
+                title={accounts.find(a => a.id === accountId)?.name}
+              >
+                <SelectValue className="min-w-0 flex-1 text-left" />
+              </SelectTrigger>
+              <SelectContent
+                data-atlas-header
+                aria-label="Accounts"
+                position="popper"
+                align="start"
+                collisionPadding={12}
+                className="max-w-[min(24rem,calc(100vw-24px))]"
+              >
+                <SelectGroup>
+                  {accounts.map(item => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                      {accounts.filter(a => a.name === item.name).length > 1 ? ` · ${item.id.slice(-8)}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <div className="map-header-group">
+              <GroupSelect groups={groupOrder} value={group} onChange={value => resetFilters(role, value, query)} />
+            </div>
+            {map.discovery && (
+              <NativeSelect
+                className="map-coverage-select"
+                aria-label="Screen coverage"
+                value={scope}
+                onChange={event => {
+                  setCoverage(event.target.value as CoverageView);
+                  setSelectedEdge(null);
+                  resetFilters(role, group, query);
+                }}
+              >
+                <NativeSelectOption value="flow" disabled={!verifiedIds.size}>
+                  Verified flow ({verifiedIds.size})
+                </NativeSelectOption>
+                <NativeSelectOption value="unlinked">
+                  Unlinked screens ({map.screens.length - verifiedIds.size})
+                </NativeSelectOption>
+                <NativeSelectOption value="all">All screens ({map.screens.length})</NativeSelectOption>
+              </NativeSelect>
+            )}
+          </>
+        }
+        actions={
+          <>
+            <HeaderIconButton label="Refresh captures" onClick={refreshMap}>
+              <RefreshCw data-icon="inline-start" aria-hidden="true" />
+            </HeaderIconButton>
+
+            <HeaderIconButton
+              label={inspectorAction}
+              aria-expanded={!collapsed}
+              aria-controls={inspectorId}
+              onClick={() => setCollapsed(value => !value)}
+            >
+              <PanelRight data-icon="inline-start" aria-hidden="true" />
+            </HeaderIconButton>
+          </>
+        }
+      />
       <AttemptNotice attempt={attempt} hasMap />
       {loadError && (
         <div className="atlas-notice" role="alert">
-          读取采集结果失败，当前显示上一次成功结果。{loadError.split('\n', 1)[0]}{' '}
-          <button onClick={refreshMap}>重试</button>
+          Could not load captures; showing the last successful map. {loadError.split('\n', 1)[0]}{' '}
+          <button onClick={refreshMap}>Retry</button>
         </div>
       )}
-      <div className="map-toolbar">
-        <div className="map-segment" aria-label="身份筛选">
-          {['全部', ...roles.filter(r => !adapter.sharedRoles?.includes(r))].map(item => (
-            <button key={item} aria-pressed={role === item} onClick={() => resetFilters(item, group, query)}>
-              {item === '全部' ? '全部身份' : `${item}空间`}
-            </button>
-          ))}
-        </div>
-        <GroupSelect groups={groupOrder} value={group} onChange={value => resetFilters(role, value, query)} />
-        <input
-          aria-label="搜索页面"
-          placeholder="搜索页面或路由…"
-          value={query}
-          onChange={e => resetFilters(role, group, e.target.value)}
-        />
-        {map.discovery && (
-          <select
-            aria-label="页面覆盖范围"
-            value={scope}
-            onChange={event => {
-              setCoverage(event.target.value as CoverageView);
-              setSelectedEdge(null);
-              resetFilters(role, group, query);
-            }}
-          >
-            <option value="flow" disabled={!verifiedIds.size}>
-              已验证流程（{verifiedIds.size}）
-            </option>
-            <option value="unlinked">未连入流程（{map.screens.length - verifiedIds.size}）</option>
-            <option value="all">全部页面（{map.screens.length}）</option>
-          </select>
-        )}
-        <span className="map-count">
-          显示 {screens.length} / {scopedCount}
-        </span>
-        <div className="map-toolbar-actions">
-          <CanvasToolbar
-            canUndo={controller.canUndo}
-            canRedo={controller.canRedo}
-            undo={controller.undo}
-            redo={controller.redo}
-            arrange={controller.arrangeVisible}
-            count={geometry.filter(n => !n.hidden && !n.locked).length}
-            locked={geometry.find(n => n.id === selectedId)?.locked}
-            onLock={selectedId ? () => controller.toggleLock(selectedId) : undefined}
-          />
-          <button
-            onClick={() => void flow.fitView({padding: 0.08, duration: 300, minZoom: CANVAS_ZOOM.min, maxZoom: 0.8})}
-          >
-            查看全貌
-          </button>
-          <button
-            type="button"
-            className="atlas-inspector-toggle"
-            aria-label={inspectorAction}
-            title={inspectorAction}
-            aria-expanded={!collapsed}
-            aria-controls={inspectorId}
-            onClick={() => setCollapsed(value => !value)}
-          >
-            <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4">
-              {!collapsed && (
-                <path d="M12 4h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-4z" fill="currentColor" stroke="none" opacity=".2" />
-              )}
-              <rect x="3" y="4" width="14" height="12" rx="2" />
-              <path d="M12 4v12" />
-            </svg>
-          </button>
-        </div>
-      </div>
       {(controller.issue ||
         controller.externalAvailable ||
         controller.pendingIds.length > 0 ||
         controller.conflictIds.length > 0) && (
         <div className="atlas-notice" role="status">
           {controller.issue}{' '}
-          {controller.corrupted && <button onClick={controller.discardCorruptedLayout}>丢弃损坏布局</button>}
+          {controller.corrupted && <button onClick={controller.discardCorruptedLayout}>Discard damaged layout</button>}
           {controller.conflictIds.length > 0 &&
-            `有 ${controller.conflictIds.length} 个页面尺寸变化后间距不足，请手动移动或整理。`}
+            `${controller.conflictIds.length} resized screens need more space. Move or arrange them.`}
           {controller.externalAvailable && (
             <>
-              <span>另一窗口已更新布局。</span>
-              <button onClick={controller.loadExternalLayout}>载入外部布局</button>
-              <button onClick={controller.keepLocalLayout}>保留当前布局</button>
+              <span>Another window updated the layout.</span>
+              <button onClick={controller.loadExternalLayout}>Load external layout</button>
+              <button onClick={controller.keepLocalLayout}>Keep current layout</button>
             </>
           )}
           {controller.pendingIds.map(id => (
             <span key={id}>
-              待定位：{map.screens.find(s => s.id === id)?.title}
-              <button onClick={() => controller.toggleLock(id)}>解锁并定位</button>
+              Needs placement: {map.screens.find(s => s.id === id)?.title}
+              <button onClick={() => controller.toggleLock(id)}>Unlock and place</button>
             </span>
           ))}
         </div>
       )}
-      <div className="map-main">
-        <section className="map-stage" aria-label="页面关系画布">
+      <div className="map-main" ref={workspace.main}>
+        <section className="map-stage" aria-label="Screen map" ref={workspace.stage}>
           <ReactFlow<ScreenNode>
             nodes={nodes}
             edges={edges}
@@ -579,6 +734,7 @@ function MapCanvas({
             edgeTypes={edgeTypes}
             minZoom={CANVAS_ZOOM.min}
             maxZoom={CANVAS_ZOOM.max}
+            translateExtent={extent}
             onNodesChange={changes => {
               controller.onMeasured(
                 changes.flatMap(c => (c.type === 'dimensions' && c.dimensions ? [{id: c.id, size: c.dimensions}] : []))
@@ -587,17 +743,20 @@ function MapCanvas({
               if (selection?.type === 'select') choose(selection.id);
             }}
             ariaLabelConfig={{
-              'controls.ariaLabel': '画布控制',
-              'controls.zoomIn.ariaLabel': '放大',
-              'controls.zoomOut.ariaLabel': '缩小',
-              'controls.fitView.ariaLabel': '适应画布',
-              'minimap.ariaLabel': '页面缩略地图',
-              'handle.ariaLabel': '页面连接点',
-              'node.a11yDescription.default': '按回车选择页面，方向键移动，Esc 取消。',
-              'edge.a11yDescription.default': '页面之间的导航关系。'
+              'controls.ariaLabel': 'Canvas controls',
+              'controls.zoomIn.ariaLabel': 'Zoom in',
+              'controls.zoomOut.ariaLabel': 'Zoom out',
+              'controls.fitView.ariaLabel': 'Fit view',
+              'minimap.ariaLabel': 'Screen minimap',
+              'handle.ariaLabel': 'Screen handle',
+              'node.a11yDescription.default':
+                'Press Enter to select a screen, arrow keys to move, and Escape to cancel.',
+              'edge.a11yDescription.default': 'Navigation between screens.'
             }}
             defaultViewport={controller.viewport}
-            onMoveEnd={(_, viewport) => controller.onViewportCommit(viewport)}
+            onMoveEnd={(_, viewport) =>
+              controller.onViewportCommit(constrainViewport(viewport, workspace.size, extent))
+            }
             nodesConnectable={false}
             deleteKeyCode={null}
             onNodeClick={(_, node) => choose(node.id)}
@@ -609,7 +768,7 @@ function MapCanvas({
               if (node) controller.onDragStop(node.id, node.position);
             }}
             onEdgeClick={(_, edge) => setSelectedEdge(edge.id)}
-            onEdgeMouseEnter={(_, edge) => setSelectedEdge(edge.id)}
+
             onPaneClick={() => {
               setSelectedId(null);
               setLive(null);
@@ -626,39 +785,69 @@ function MapCanvas({
               />
             )}
             <Background color="#d6dce5" gap={24} size={1} />
-            <Controls showInteractive={false} orientation="horizontal" />
             <MiniMap
-              style={{width: 125, height: 90}}
+              style={{width: 110, height: 74}}
               pannable
               zoomable
               nodeColor={n => ['#81a8cd', '#d8ba77', '#91b4aa'][roles.indexOf((n.data.screen as MapScreen).role) % 3]}
             />
           </ReactFlow>
-          {!screens.length && <div className="map-no-results">没有匹配的页面，请调整筛选。</div>}
-          <div className="map-legend">
-            <span>
-              {routes.filter(r => r.status === 'unroutable').length > 0
-                ? `${routes.filter(r => r.status === 'unroutable').length} 条关系空间不足；选页查看列表`
-                : '自由布局 · 拖动局部避让'}
-            </span>
-            <span>
-              <i />
-              实际点击验证
-            </span>
-            <span>
-              <i className="declared" />
-              声明关系，未验证
-            </span>
-            <label>
-              <input type="checkbox" checked={showEdges} onChange={e => setShowEdges(e.target.checked)} />
-              显示连线
-            </label>
-          </div>
+          {!screens.length && <div className="map-no-results">No matching screens. Adjust the filters.</div>}
+          <CanvasChrome
+            mode={layoutMode}
+            onModeChange={mode => {
+              setLayoutMode(mode);
+              try {
+                localStorage.setItem(`${adapter.layoutKey}:mode`, mode);
+              } catch {
+                /* Layout remains usable without storage. */
+              }
+              arrange(mode);
+            }}
+            layoutTools={
+              <CanvasToolbar
+                canUndo={controller.canUndo}
+                canRedo={controller.canRedo}
+                undo={controller.undo}
+                redo={controller.redo}
+                arrange={() => arrange(layoutMode)}
+                count={geometry.filter(n => !n.hidden && !n.locked).length}
+                locked={geometry.find(n => n.id === selectedId)?.locked}
+                onLock={selectedId ? () => controller.toggleLock(selectedId) : undefined}
+              />
+            }
+            zoom={controller.viewport.zoom}
+            onZoom={zoomTo}
+            onFit={() => fit()}
+            showEdges={showEdges}
+            onShowEdges={setShowEdges}
+            unroutable={routes.filter(r => r.status === 'unroutable').length}
+          />
         </section>
-        <aside id={inspectorId} hidden={collapsed} className={`map-inspector ${live ? 'map-inspector-live' : ''}`}>
+        {!collapsed && (
+          <div
+            className="map-inspector-resize"
+            role="separator"
+            aria-label="Resize details panel"
+            aria-orientation="vertical"
+            aria-valuemin={320}
+            aria-valuemax={workspace.maxWidth}
+            aria-valuenow={workspace.inspectorWidth}
+            tabIndex={0}
+            data-atlas-canvas-controls
+            style={{right: workspace.inspectorWidth - 4}}
+            {...workspace.resizeProps}
+          />
+        )}
+        <aside
+          id={inspectorId}
+          hidden={collapsed}
+          className={`map-inspector ${live ? 'map-inspector-live' : ''}`}
+          style={{width: workspace.inspectorWidth}}
+        >
           {edgeDetail && (
             <div className="atlas-edge-detail">
-              <h3>导航关系</h3>
+              <h3>Navigation</h3>
               <b>
                 {map.screens.find(s => s.id === edgeDetail.source)?.title} →{' '}
                 {map.screens.find(s => s.id === edgeDetail.target)?.title}
@@ -666,17 +855,17 @@ function MapCanvas({
               <p>
                 {edgeDetail.action}
                 {edgeDetail.recordingSources?.length
-                  ? ` · ${edgeDetail.recordingSources.map(source => (source === 'manual' ? '手动录制' : '测试录制')).join('、')}`
+                  ? ` · ${edgeDetail.recordingSources.map(source => (source === 'manual' ? 'Manual recording' : 'Test recording')).join(', ')}`
                   : ''}
               </p>
               <span>
                 {edgeDetail.status === 'observed'
-                  ? '实际点击已验证'
+                  ? 'Verified by interaction'
                   : edgeDetail.status === 'failed'
-                    ? '验证失败'
-                    : '声明关系，未验证'}
+                    ? 'Verification failed'
+                    : 'Declared, unverified'}
               </span>
-              <button onClick={() => setSelectedEdge(null)}>关闭关系</button>
+              <button onClick={() => setSelectedEdge(null)}>Close transition</button>
             </div>
           )}
           {selected ? (
@@ -686,7 +875,7 @@ function MapCanvas({
                   {selected.role} / {selected.group}
                 </span>
                 <button
-                  aria-label="关闭页面详情"
+                  aria-label="Close screen details"
                   onClick={() => {
                     setSelectedId(null);
                     setLive(null);
@@ -696,18 +885,19 @@ function MapCanvas({
                   ×
                 </button>
               </div>
-              <h2>{selected.title}</h2>
+              <h2>{selected.pageName ?? selected.title}</h2>
+              <p>{selected.pageName ? 'Declared page name' : 'Page title'}</p>
               <code>{selected.route}</code>
               {map.discovery && (
                 <div className="map-muted">
-                  <p>页面来源　{selected.discoverySource || '浏览器观测'}</p>
-                  <p>应用入口　{selected.entry}</p>
+                  <p>Screen source: {selected.discoverySource || 'Browser observation'}</p>
+                  <p>App entry: {selected.entry}</p>
                   <p>
                     {entrances.length
-                      ? `有 ${entrances.length} 条已验证的进入路径`
+                      ? `${entrances.length} verified entry paths`
                       : selected.status === 'captured'
-                        ? '已有截图，尚无已验证的进入路径'
-                        : '待采集候选，尚无已验证的进入路径'}
+                        ? 'Screenshot captured; no verified entry path yet'
+                        : 'Pending candidate; no verified entry path yet'}
                   </p>
                 </div>
               )}
@@ -720,7 +910,7 @@ function MapCanvas({
                     setPreviewError('');
                   }}
                 >
-                  采集截图
+                  Captured screenshot
                 </button>
                 {(adapter.previewUrl || (adapter.openLiveSession && adapter.closeLiveSession)) &&
                   (!map.discovery || selected.status === 'captured') && (
@@ -730,27 +920,30 @@ function MapCanvas({
                       }
                       onClick={() => openPreview(selected)}
                     >
-                      实时操作
+                      Open live session
                     </button>
                   )}
               </div>
               {managed?.screenId === selected.id && (
                 <p role="status">
                   {managed.state === 'opening'
-                    ? '正在准备独立 Chrome 会话…'
+                    ? 'Preparing a separate Chrome session…'
                     : managed.state === 'ready'
-                      ? '已在独立 Chrome 窗口打开，可在该窗口操作。'
-                      : '实时会话已关闭。'}{' '}
-                  {managed.state !== 'closed' && <button onClick={() => cancelManaged(true)}>关闭实时会话</button>}
+                      ? 'Opened in a separate Chrome window. Interact with the app there.'
+                      : 'Live session closed.'}{' '}
+                  {managed.state !== 'closed' && (
+                    <button onClick={() => cancelManaged(true)}>Close live session</button>
+                  )}
                 </p>
               )}
               {previewError && <p role="alert">{previewError}</p>}
               {live?.id === selected.id ? (
                 <>
                   <p className="map-live-hint">
-                    {adapter.isolatedPreview ? '独立演示会话' : '实时 Web 预览'} · {map.viewport.width} ×{' '}
+                    {adapter.isolatedPreview ? 'Isolated demo session' : 'Live web preview'} · {map.viewport.width} ×{' '}
                     {map.viewport.height}
-                    <br />需 App 服务运行；切换页面会关闭此预览。
+                    <br />
+                    The app server must be running. Selecting another screen closes this preview.
                   </p>
                   <div
                     className="map-live-box"
@@ -758,25 +951,25 @@ function MapCanvas({
                   >
                     <iframe
                       style={{width: map.viewport.width, height: map.viewport.height}}
-                      title={`${selected.title}实时预览`}
+                      title={`${selected.title} live preview`}
                       src={live.url}
                     />
                   </div>
                   <a className="map-open" href={live.url} target="_blank" rel="noreferrer">
-                    在独立窗口操作 ↗
+                    Open in a separate window ↗
                   </a>
                 </>
               ) : selected.image ? (
                 <a href={selected.image} target="_blank" rel="noreferrer">
-                  <img className="map-detail-image" src={selected.image} alt={`${selected.title}完整截图`} />
+                  <img className="map-detail-image" src={selected.image} alt={`${selected.title} full screenshot`} />
                 </a>
               ) : (
                 <p role={selected.status === 'failed' ? 'alert' : undefined}>
-                  {selected.status === 'pending' ? '待采集 · ' : ''}
+                  {selected.status === 'pending' ? 'Pending · ' : ''}
                   {selected.error}
                 </p>
               )}
-              <h3>页面关系 · {relations.length}</h3>
+              <h3>Screen connections · {relations.length}</h3>
               {relations.length ? (
                 relations.map(edge => {
                   const target = map.screens.find(
@@ -791,7 +984,7 @@ function MapCanvas({
                         if (target) {
                           setQuery('');
                           setGroup('全部');
-                          setRole('全部');
+
                           if (scope !== 'all' && verifiedIds.has(target.id) !== (scope === 'flow')) setCoverage('all');
                           choose(target.id);
                           const p = geometry.find(n => n.id === target.id) ?? {x: 0, y: 0};
@@ -804,45 +997,54 @@ function MapCanvas({
                       </b>
                       <span>
                         {edge.action} ·{' '}
-                        {edge.status === 'observed' ? '已验证' : edge.status === 'failed' ? '验证失败' : '未验证'}
+                        {edge.status === 'observed'
+                          ? 'Verified'
+                          : edge.status === 'failed'
+                            ? 'Verification failed'
+                            : 'Unverified'}
                       </span>
                     </button>
                   );
                 })
               ) : (
-                <p className="map-muted">尚未登记该页连线。页面截图不代表入口流程已验证。</p>
+                <p className="map-muted">
+                  No connections recorded for this screen. A screenshot does not verify its entry flow.
+                </p>
               )}
               <p className="map-muted">
                 {!map.discovery && selected.discoverySource && `${selected.discoverySource} · `}
-                {selected.state} · {selected.capturedAt ? new Date(selected.capturedAt).toLocaleString('zh-CN') : ''}
+                {selected.state} · {selected.capturedAt ? new Date(selected.capturedAt).toLocaleString('en-US') : ''}
               </p>
             </>
           ) : (
             <div className="map-intro">
               <span className="map-eyebrow">SCREEN FLOW</span>
               <h2>
-                把整个应用
+                See the whole app,
                 <br />
-                放在一起看。
+                in one place.
               </h2>
-              <p>已采集卡片展示真实 Flutter 页面截图。选中页面，查看截图、相邻关系或实时预览。</p>
+              <p>
+                Cards show real Flutter screenshots. Select a screen to inspect its capture, connections, or live
+                preview.
+              </p>
               <ol>
-                <li>拖动画布，滚轮缩放</li>
-                <li>筛选身份、场景或功能区域</li>
-                <li>点击页面，进入实时预览</li>
+                <li>Drag to pan; scroll to zoom</li>
+                <li>Switch account workspaces or filter features</li>
+                <li>Select a screen to inspect or open it</li>
               </ol>
               {adapter.shell?.introNote && <p className="atlas-intro-note">{adapter.shell.introNote}</p>}
               <div className="map-scope">
-                <b>本轮采集范围</b>
+                <b>Capture scope</b>
                 <p>{map.scope}</p>
                 <p>
                   {map.discovery
-                    ? '已验证流程显示实际录到连线的页面。切换到「未连入流程」可查看只有截图的页面和待采集候选。'
-                    : '截图不代表流程验证。画布只显示已发现的页面和已记录的关系。'}
+                    ? 'Verified flow shows screens connected by recorded interactions. Choose Unlinked screens to see screenshot-only pages and pending candidates.'
+                    : 'A screenshot does not verify a flow. The map shows discovered screens and recorded connections.'}
                 </p>
                 {Boolean(map.diagnostics?.length) && (
                   <details>
-                    <summary>采集提示 · {map.diagnostics?.length} 条</summary>
+                    <summary>Capture notes · {map.diagnostics?.length}</summary>
                     <ul>
                       {map.diagnostics?.slice(0, 10).map((message, index) => (
                         <li key={index}>{message}</li>
@@ -856,17 +1058,29 @@ function MapCanvas({
         </aside>
       </div>
       <footer className={`map-status ${stale || map.runtimeErrors?.length ? 'is-stale' : ''}`}>
-        <span>
-          {map.runtimeErrors?.length ? `采集运行异常 ${map.runtimeErrors.length} 项，请查看采集报告 · ` : ''}
-          {stale
-            ? '● 源码已变化，请重新采集'
-            : source
-              ? '● 采集后源码未变（不替代构建验证）'
-              : '● 源码新鲜度未核验'} · {new Date(map.capturedAt).toLocaleString('zh-CN')}
+        <span className="map-capture-summary">
+          Showing {screens.length} / {scopedCount} · {map.screens.filter(screen => screen.status === 'captured').length}{' '}
+          captured screens
+          {map.discovery && ` · ${map.screens.filter(screen => screen.status === 'pending').length} pending`} ·{' '}
+          {map.edges.filter(edge => edge.status === 'observed').length} verified transitions
         </span>
         <span>
+          {map.runtimeErrors?.length ? `${map.runtimeErrors.length} runtime errors; see the capture report · ` : ''}
+          {stale
+            ? '● Inputs changed; capture again'
+            : map.schemaVersion === 2
+              ? inputChanged === false
+                ? '● Inputs unchanged (runtime not verified)'
+                : '● Input freshness not checked'
+              : source
+                ? '● Source unchanged since capture (build not verified)'
+                : '● Source freshness not checked'}{' '}
+          · {new Date(map.capturedAt).toLocaleString('en-US')}
+        </span>
+        <span>
+          {map.schemaVersion === 2 && (map.reused ? 'Reused capture · ' : 'Saved capture · ')}
           {map.viewport.width} × {map.viewport.height} · {map.theme}
-          {map.sourceFingerprint && ` · 指纹 ${map.sourceFingerprint.slice(0, 10)}`}
+          {map.sourceFingerprint && ` · Fingerprint ${map.sourceFingerprint.slice(0, 10)}`}
         </span>
       </footer>
     </main>
@@ -891,7 +1105,8 @@ async function readAdapterSnapshot(adapter: AtlasViewerAdapter): Promise<ViewerS
 export default function AppMap({adapter, config}: AtlasViewerProps) {
   const presentation = useMemo<ViewerPresentation>(() => {
     if (adapter) return adapter;
-    const {shell, layoutKey, sharedRoles, captureHint, fingerprintUrl, preview, managedLive} = config;
+    const {shell, layoutKey, sharedRoles, captureHint, fingerprintUrl, workspaceStatusUrl, preview, managedLive} =
+      config;
     return {
       shell,
       layoutKey,
@@ -900,6 +1115,14 @@ export default function AppMap({adapter, config}: AtlasViewerProps) {
       ...createManagedLiveAdapter(managedLive),
       previewUrl: createPreviewUrl(preview),
       isolatedPreview: Boolean(preview && 'sessionParam' in preview && preview.sessionParam),
+      workspaceFreshness: workspaceStatusUrl
+        ? async (accountId, revisionId) => {
+            const response = await fetch(workspaceStatusUrl, {cache: 'no-store'});
+            if (!response.ok) return null;
+            const status = (await response.json()).workspaces?.find((w: {id: string}) => w.id === accountId);
+            return status ? status.revisionId !== revisionId || status.configurationChanged : true;
+          }
+        : undefined,
       sourceFingerprint: fingerprintUrl ? () => readSourceFingerprint(fingerprintUrl) : undefined
     };
   }, [adapter, config]);
@@ -932,7 +1155,7 @@ export default function AppMap({adapter, config}: AtlasViewerProps) {
             : {
                 ...before,
                 attempt: snapshot.attempt ?? before.attempt,
-                error: snapshot.error || '读取采集结果失败'
+                error: snapshot.error || 'Could not load captures'
               }
         };
       });
@@ -948,32 +1171,88 @@ export default function AppMap({adapter, config}: AtlasViewerProps) {
   if (!map)
     return (
       <main className="app-map">
-        <ShellHeader presentation={presentation} refresh={load} />
+        <ShellHeader presentation={presentation} />
         <AttemptNotice attempt={attempt} hasMap={false} />
-        <section className="map-empty" aria-label="采集结果">
+        <section className="map-empty" aria-label="Capture results">
           {error ? (
             <>
               <p role="alert">{error}</p>
-              <code>{presentation.captureHint ?? '请运行项目的 Atlas 采集适配器'}</code>
+              <code>{presentation.captureHint ?? 'Run the project’s Atlas capture adapter'}</code>
               <p>
-                <button onClick={load}>重新加载</button>
+                <button onClick={load}>Reload</button>
               </p>
             </>
           ) : (
-            <p role="status">正在加载真实页面…</p>
+            <p role="status">Loading captured screens…</p>
           )}
         </section>
       </main>
     );
 
   return (
-    <ReactFlowProvider>
+    <AccountCanvas
+      key={`${presentation.layoutKey ?? 'atlas'}:${map.applicationId ?? 'legacy'}:${map.profileId ?? 'default'}`}
+      map={map}
+      attempt={attempt}
+      error={error}
+      refresh={load}
+      presentation={presentation}
+    />
+  );
+}
+
+function AccountCanvas({
+  map,
+  attempt,
+  error,
+  refresh,
+  presentation
+}: {
+  map: AppMapManifest;
+  attempt: CaptureAttempt | null;
+  error: string;
+  refresh: () => void;
+  presentation: ViewerPresentation;
+}) {
+  const accounts = useMemo(() => accountWorkspaces(map), [map]);
+  const namespace = `${presentation.layoutKey ?? 'atlas'}:${map.applicationId ?? 'legacy'}:${map.profileId ?? 'default'}:accounts-v2`;
+  const [selection, setSelection] = useState(() => {
+    try {
+      return localStorage.getItem(`${namespace}:selected`) ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const active = accounts.find(a => a.id === selection) ?? accounts.find(a => a.id !== '@anonymous') ?? accounts[0];
+  const selectAccount = (id: string) => {
+    setSelection(id);
+    try {
+      localStorage.setItem(`${namespace}:selected`, id);
+    } catch {
+      /* Storage is optional. */
+    }
+  };
+  const scopedPresentation = useMemo(
+    () => ({...presentation, layoutKey: `${namespace}:${active?.id}`}),
+    [presentation, namespace, active?.id]
+  );
+  if (!active)
+    return (
+      <main className="app-map">
+        <p role="status">No account workspaces available.</p>
+      </main>
+    );
+  return (
+    <ReactFlowProvider key={`${namespace}:${active.id}`}>
       <MapCanvas
-        map={map}
-        attempt={attempt?.captureId === map.captureId ? null : attempt}
+        map={active.map}
+        accounts={accounts}
+        accountId={active.id}
+        selectAccount={selectAccount}
+        attempt={attempt?.captureId === active.map.captureId ? null : attempt}
         loadError={error}
-        refresh={load}
-        adapter={presentation}
+        refresh={refresh}
+        adapter={scopedPresentation}
       />
     </ReactFlowProvider>
   );

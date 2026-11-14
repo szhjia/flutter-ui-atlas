@@ -8,16 +8,18 @@ import {fileURLToPath} from 'node:url';
 import {buildManifest, collectExternalImports} from '../scripts/pack-cli.mjs';
 
 const source = {
-  name: 'flutter-ui-atlas', version: '0.1.0', type: 'module',
+  name: 'flutter-ui-atlas',
+  version: '0.1.0',
+  type: 'module',
   engines: {node: '>=22 <26.13'},
   dependencies: {},
-  devDependencies: {playwright: '1.64.1', yaml: '2.8.3', prettier: '3.9.10'},
+  devDependencies: {playwright: '1.64.1', yaml: '2.8.3', prettier: '3.9.10'}
 };
 
 test('collectExternalImports 提取裸说明符，跳过相对与 node: 内建', () => {
   const texts = [
     `import {execFileSync} from 'node:child_process';\nimport {capture} from './index.mjs';\nconst {chromium} = await import('playwright');`,
-    `import {parse} from 'yaml';\nimport x from '@scope/pkg/sub';`,
+    `import {parse} from 'yaml';\nimport x from '@scope/pkg/sub';`
   ];
   assert.deepEqual([...collectExternalImports(texts)].sort(), ['@scope/pkg', 'playwright', 'yaml']);
 });

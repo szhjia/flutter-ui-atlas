@@ -1,4 +1,5 @@
 import type {AppMapManifest, CaptureAttempt, MapScreen} from './model';
+import {assertUniqueRoutes} from '../../capture/route-identity.mjs';
 
 export interface AtlasHeaderLink {
   label: string;
@@ -29,6 +30,7 @@ export interface AtlasViewerConfig {
   captureHint?: string;
   artifactPaths: readonly string[];
   fingerprintUrl?: string;
+  workspaceStatusUrl?: string;
   managedLive?: {endpoint: string; token: string};
   preview?:
     | AtlasPreviewConfig
@@ -106,7 +108,7 @@ export interface AtlasLiveSessionStatus {
 export function createManagedLiveAdapter(config: AtlasViewerConfig['managedLive']) {
   if (!config) return undefined;
   if (!rootedPath(config.endpoint) || /[?#]/.test(config.endpoint) || !config.token)
-    throw Error('实时会话接口必须使用本站路径和会话令牌');
+    throw Error('Live sessions require a same-origin endpoint and a session token.');
   const endpoint = config.endpoint.replace(/\/$/, '');
   async function call(path: string, body?: object, signal?: AbortSignal) {
     const response = await fetch(`${endpoint}/${path}`, {
@@ -119,7 +121,7 @@ export function createManagedLiveAdapter(config: AtlasViewerConfig['managedLive'
       keepalive: path === 'close'
     });
     const result = await response.json();
-    if (!response.ok) throw Error(result.message || `实时会话请求失败（HTTP ${response.status}）`);
+    if (!response.ok) throw Error(result.message || `Live session request failed (HTTP ${response.status})`);
     return result;
   }
   return {
@@ -147,12 +149,13 @@ export interface ViewerSnapshot {
 }
 
 export const emptySnapshot: ViewerSnapshot = {map: null, attempt: null, error: ''};
-export const missingManifest = '尚无可用采集结果，请先运行采集命令。';
+export const missingManifest = 'No captures yet. Run the capture command first.';
 
 export function assertManifest(value: unknown): asserts value is AppMapManifest {
   const map = value as Partial<AppMapManifest> | null;
   if (
-    map?.schemaVersion !== 1 ||
+    !map ||
+    ![1, 2].includes(map.schemaVersion ?? 0) ||
     !Array.isArray(map.screens) ||
     !Array.isArray(map.edges) ||
     !map.viewport ||
@@ -169,7 +172,16 @@ export function assertManifest(value: unknown): asserts value is AppMapManifest 
         !['declared', 'observed', 'failed'].includes(edge.status)
     )
   ) {
-    throw Error('采集文件格式不正确');
+    throw Error('Invalid capture manifest');
+  }
+  assertUniqueRoutes(map.screens!);
+  if (map.workspaces) {
+    if (!Array.isArray(map.workspaces) || !map.workspaces.length) throw Error('Invalid workspaces');
+    for (const workspace of map.workspaces) {
+      if (typeof workspace.id !== 'string' || typeof workspace.name !== 'string' || workspace.map.workspaces)
+        throw Error('Invalid workspace');
+      assertManifest(workspace.map);
+    }
   }
 }
 
@@ -195,7 +207,7 @@ export async function readViewerSnapshot(config: AtlasViewerConfig): Promise<Vie
   for (const path of config.artifactPaths) {
     const base = path.replace(/\/$/, '');
     if (!rootedPath(base) || /[?#]/.test(base)) {
-      return {...emptySnapshot, error: '采集结果目录必须使用本站路径'};
+      return {...emptySnapshot, error: 'Capture directories must use same-origin paths.'};
     }
     firstSource ??= base;
     try {
@@ -203,9 +215,9 @@ export async function readViewerSnapshot(config: AtlasViewerConfig): Promise<Vie
       // Vite 的静态预览会用 HTML 回退尚不存在的文件。
       if (response.status === 404 || (response.ok && response.headers.get('content-type')?.includes('text/html')))
         continue;
-      if (!response.ok) throw Error(`无法读取采集结果（HTTP ${response.status}）`);
+      if (!response.ok) throw Error(`Could not load captures (HTTP ${response.status})`);
       const map: unknown = await response.json().catch(() => {
-        throw Error('采集文件格式不正确');
+        throw Error('Invalid capture manifest');
       });
       assertManifest(map);
       return {map, attempt: await readAttempt(base), error: ''};

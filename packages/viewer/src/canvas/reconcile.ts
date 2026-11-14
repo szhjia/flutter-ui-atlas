@@ -14,7 +14,7 @@ export function reconcileLayout(
       document: {
         schemaVersion: 1,
         nodes: Object.fromEntries(r.nodes.map(n => [n.id, {x: n.x, y: n.y, locked: n.locked}])),
-        viewport: {x: 40, y: 35, zoom: 0.65},
+        viewport: {x: 40, y: 90, zoom: 0.65},
         catalogIds: nodes.map(n => n.id),
         pendingIds: []
       },

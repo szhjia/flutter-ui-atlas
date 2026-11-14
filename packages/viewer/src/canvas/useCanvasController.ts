@@ -1,12 +1,16 @@
 import {useEffect, useRef, useState} from 'react';
+import {flushSync} from 'react-dom';
 import type {AppMapManifest} from '../model';
 import type {CanvasNode, LayoutDocument, LayoutHistory, Point, Size, Viewport} from './types';
 import {solveDrag} from './solve-drag';
-import {arrangeNodes} from './arrange';
+import {arrangeNodes, type ArrangementOptions} from './arrange';
+import {clampZoom} from './viewport';
 import {reconcileLayout} from './reconcile';
 import {commitLayout, undoLayout, redoLayout} from './layout-state';
 import {readLayout, writeLayout, discardLayout, storageKey} from './layout-storage';
 import {DEFAULT_NODE_SIZE} from './constants';
+
+const workspaceHistories = new Map<string, LayoutHistory>();
 
 export function isEditingTarget(target: EventTarget | null) {
   return (
@@ -37,20 +41,31 @@ export function useCanvasController({
     try {
       return readLayout(window.localStorage, layoutKey);
     } catch {
-      return {document: null, issue: '布局未保存：浏览器存储不可用', writable: false, corrupted: false};
+      return {
+        document: null,
+        issue: 'Layout not saved: browser storage is unavailable.',
+        writable: false,
+        corrupted: false
+      };
     }
   };
   const initial = useRef<ReturnType<typeof read> | null>(null);
   if (!initial.current) initial.current = read();
   const initialLayout = useRef<ReturnType<typeof reconcileLayout> | null>(null);
   if (!initialLayout.current) initialLayout.current = reconcileLayout(initial.current.document, shape(), map.edges);
-  const [history, setHistory] = useState<LayoutHistory>(() => ({
-    present: initialLayout.current!.document,
-    past: [],
-    future: []
-  }));
+  const [history, setHistory] = useState<LayoutHistory>(() => {
+    const cached = layoutKey && initial.current?.document ? workspaceHistories.get(layoutKey) : undefined;
+    if (cached && JSON.stringify(cached.present) === JSON.stringify(initialLayout.current!.document)) return cached;
+    return {present: initialLayout.current!.document, past: [], future: []};
+  });
   const current = useRef(history);
   current.current = history;
+  useEffect(
+    () => () => {
+      if (layoutKey) workspaceHistories.set(layoutKey, current.current);
+    },
+    [layoutKey]
+  );
   const [preview, setPreview] = useState<CanvasNode[] | null>(null);
   const [pendingIds, setPending] = useState<string[]>(initialLayout.current.pendingIds),
     pending = useRef<string[]>(initialLayout.current.pendingIds);
@@ -76,7 +91,7 @@ export function useCanvasController({
       .map(n => ({...n, ...d.nodes[n.id]}));
   const save = (d: LayoutDocument) => {
     if (external.current) {
-      setIssue('另一窗口有新布局；载入或保留当前布局后再保存');
+      setIssue('Another window has a new layout. Load it or keep the current layout before saving.');
       return;
     }
     try {
@@ -85,7 +100,7 @@ export function useCanvasController({
       setIssue(result.issue);
     } catch {
       readCurrentLayout();
-      setIssue('布局未保存：浏览器存储不可用');
+      setIssue('Layout not saved: browser storage is unavailable.');
     }
   };
   const install = (h: LayoutHistory, persist = true) => {
@@ -173,8 +188,11 @@ export function useCanvasController({
       frame.current = 0;
       if (!gesture.current || !target.current) return;
       const r = solveDrag(gesture.current.start, id, target.current);
-      setPreview(r.ok ? r.nodes : gesture.current.start);
-      setIssue(r.ok ? null : '此处空间不足，松手将恢复原布局');
+      // The gesture is already coalesced into this animation frame. Commit before its paint.
+      flushSync(() => {
+        setPreview(r.ok ? r.nodes : gesture.current!.start);
+        setIssue(r.ok ? null : 'Not enough space here. Releasing will restore the original layout.');
+      });
     });
   };
   const onDragStop = (id: string, p: Point) => {
@@ -182,7 +200,7 @@ export function useCanvasController({
     const r = solveDrag(gesture.current.start, id, p);
     cancelDrag();
     if (r.ok) commitNodes(r.nodes);
-    else setIssue('此处空间不足，已恢复整个拖动前的布局');
+    else setIssue('Not enough space here. Restored the layout from before the drag.');
   };
   const moveByKeyboard = (id: string, delta: Point) => {
     const n = nodesFor(current.current.present).find(n => n.id === id);
@@ -211,17 +229,20 @@ export function useCanvasController({
     h.present = reconcile(h.present, previous.current);
     install(h);
   };
-  const arrangeVisible = () => {
+  const arrangeVisible = (options?: ArrangementOptions) => {
     cancelDrag();
-    const r = arrangeNodes(nodesFor(current.current.present), map.edges, visibleIds);
-    if (r.ok) commitNodes(r.nodes);
-    else setIssue('没有足够空间整理，布局未更改');
+    const r = arrangeNodes(nodesFor(current.current.present), map.edges, visibleIds, options);
+    if (r.ok) {
+      commitNodes(r.nodes);
+      return r.nodes;
+    } else setIssue('Not enough space to arrange screens. The layout is unchanged.');
+    return null;
   };
   const loadExternalLayout = () => {
     cancelDrag();
     const value = readCurrentLayout();
     if (!value.document) {
-      setIssue(value.issue ?? '外部布局已删除；当前布局仍保留');
+      setIssue(value.issue ?? 'The external layout was deleted. The current layout is kept.');
       return;
     }
     external.current = false;
@@ -242,7 +263,7 @@ export function useCanvasController({
       setCorrupted(false);
       external.current = true;
       setExternal(true);
-      setIssue('布局数据已可读：请载入外部布局或保留当前布局。');
+      setIssue('Layout data is readable again. Load the external layout or keep the current one.');
       return;
     }
     if (!check.writable && !check.corrupted) {
@@ -262,6 +283,7 @@ export function useCanvasController({
     install({present: reconcile(null), past: [], future: []});
   };
   const onViewportCommit = (viewport: Viewport) => {
+    viewport = {...viewport, zoom: clampZoom(viewport.zoom)};
     const h = {...current.current, present: {...current.current.present, viewport}};
     install(h);
   };

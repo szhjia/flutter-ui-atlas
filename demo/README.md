@@ -39,7 +39,7 @@ In the configuration page, set the app URL above and choose form authentication:
 | Success check          | role `heading`, name `Home`      |
 | Failure text           | `Incorrect username or password` |
 
-Add the two demo accounts, test each login, and save. Then add the page catalog below to capture the signed-in states.
+Add the two demo accounts, test each login, and save. Then add the page catalog below to capture the signed-in routes.
 
 For the full map, merge `routeMode`, `profiles`, `timeoutMs`, `requireObservedEdges`, `sourceFiles`, `screens`, and `edges` from [the sample catalog](../tests/helpers/shop-catalog.yaml) into `.atlas/atlas.yaml`. Keep the app URL, authentication, and account UUIDs saved by the configuration page. If you copied this demo out of the repository, get the catalog from the [source repository](https://github.com/szhjia/flutter-ui-atlas/blob/main/tests/helpers/shop-catalog.yaml).
 
@@ -49,7 +49,7 @@ atlas view --profile phone
 atlas view --profile pad
 ```
 
-The catalog covers 16 account/page states and 21 transitions per viewport. Atlas uses independent Chrome contexts, leaving your ordinary browsing session alone. Everything in `.atlas/` stays local and is ignored by Git.
+The catalog covers 11 account/route pages and 16 navigation transitions per viewport: one shared sign-in route and five routes per account. Wrong-password messages, adding products, and changing cart contents stay within their existing route; they do not add nodes. Atlas uses independent Chrome contexts, leaving your ordinary browsing session alone. Everything in `.atlas/` stays local and is ignored by Git.
 
 ## Check and build
 
@@ -60,3 +60,5 @@ flutter build web --no-web-resources-cdn --no-wasm-dry-run
 ```
 
 Web output is written to `build/web/`. The Atlas repository's browser harness is for verification only; it is not needed to run this app.
+
+Atlas can display declared Dart page names (for example `LoginPage` and `ProfilePage`) through the external acceptance catalog. The demo itself does not import Atlas. In the viewer, each signed-in account has six routes including the shared sign-in page and eight verified transitions. Use `atlas build --force` when refreshing runtime evidence; an ordinary unchanged build preserves the original capture time.

@@ -85,3 +85,20 @@ it('目标位于重叠墙围成的封闭区域时，A* 搜索失败且不绘制�
   expect(edge.status).toBe('unroutable');
   expect(edge.points).toEqual([]);
 });
+
+it('fan-out and reverse edges have separate stable anchors', () => {
+  const nodes = [n('a', 0), n('b', 800), n('c', 800, 800)];
+  const edges = [
+    {id: 'ab', source: 'a', target: 'b', action: ''},
+    {id: 'ba', source: 'b', target: 'a', action: ''},
+    {id: 'ac', source: 'a', target: 'c', action: ''}
+  ];
+  const routes = routeEdges(nodes, edges, [], new Set());
+  expect(routes.every(r => r.status === 'routed')).toBe(true);
+  const ab = routes.find(r => r.id === 'ab')!,
+    ba = routes.find(r => r.id === 'ba')!,
+    ac = routes.find(r => r.id === 'ac')!;
+  expect(ab.points[0].y).not.toBe(ac.points[0].y);
+  expect(ab.points).not.toEqual([...ba.points].reverse());
+  expect(routeEdges(nodes, [...edges].reverse(), [], new Set())).toEqual(routes);
+});

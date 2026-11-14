@@ -26,11 +26,14 @@ export function buildManifest(source, external) {
     throw Error(`打包依赖未在根 package.json 声明：${missing.join('、')}。请先加入根清单再打包。`);
   }
   return {
-    name: source.name, version: source.version, type: source.type, description: source.description,
+    name: source.name,
+    version: source.version,
+    type: source.type,
+    description: source.description,
     engines: source.engines,
     bin: {atlas: './packages/cli/atlas.mjs'},
     files: ['dist', 'packages/cli', 'packages/capture'],
-    dependencies: Object.fromEntries([...external].sort().map(name => [name, pool[name]])),
+    dependencies: Object.fromEntries([...external].sort().map(name => [name, pool[name]]))
   };
 }
 
@@ -58,7 +61,9 @@ async function pack(destination) {
     // 冒烟需要解析运行时依赖：stage 内借用根 node_modules（npm pack 不会打包它）。
     await symlink(join(root, 'node_modules'), join(stage, 'node_modules'), 'dir');
     // 产物冒烟：tarball 之前先证明 stage 内 CLI 可执行且版本一致。
-    const version = execFileSync(process.execPath, [join(stage, 'packages/cli/atlas.mjs'), '--version'], {encoding: 'utf8'}).trim();
+    const version = execFileSync(process.execPath, [join(stage, 'packages/cli/atlas.mjs'), '--version'], {
+      encoding: 'utf8'
+    }).trim();
     if (version !== source.version) {
       throw Error(`打包冒烟失败：stage 内 --version 输出 ${version}，期望 ${source.version}`);
     }

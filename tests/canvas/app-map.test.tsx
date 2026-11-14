@@ -52,26 +52,26 @@ it('刷新失败时保留上一次成功的画布，并叠加可行动提示', a
   const loadManifest = vi
     .fn()
     .mockResolvedValueOnce(manifest)
-    .mockRejectedValueOnce(new Error('无法读取采集结果（HTTP 500）'));
+    .mockRejectedValueOnce(new Error('Could not load captures (HTTP 500)'));
   render(<AppMap adapter={adapterWith(loadManifest)} />);
   await waitFor(() => expect(screen.getAllByText(/项目列表/).length).toBeGreaterThan(0));
 
-  fireEvent.click(screen.getByText('刷新采集结果'));
+  fireEvent.click(screen.getByRole('button', {name: 'Refresh captures'}));
 
   const alert = await screen.findByRole('alert');
   expect(alert.textContent).toContain('HTTP 500');
-  expect(alert.textContent).toContain('当前显示上一次成功结果');
-  expect(alert.textContent).toContain('重试');
+  expect(alert.textContent).toContain('showing the last successful map');
+  expect(alert.textContent).toContain('Retry');
   expect(screen.getAllByText(/项目列表/).length).toBeGreaterThan(0);
 });
 
 it('首次加载失败显示错误屏与重新加载入口（锚定现状）', async () => {
-  const loadManifest = vi.fn().mockRejectedValue(new Error('无法读取采集结果（HTTP 500）'));
+  const loadManifest = vi.fn().mockRejectedValue(new Error('Could not load captures (HTTP 500)'));
   render(<AppMap adapter={adapterWith(loadManifest)} />);
 
   const alert = await screen.findByRole('alert');
   expect(alert.textContent).toContain('HTTP 500');
-  expect(screen.getByText('重新加载')).toBeTruthy();
+  expect(screen.getByText('Reload')).toBeTruthy();
   expect(screen.queryByText(/项目列表/)).toBeNull();
 });
 
@@ -119,7 +119,7 @@ it('等价配置只改外壳时仍属同来源，刷新失败保留成功画布'
   await screen.findByText('项目列表');
   failed = true;
   rerender(<AppMap config={{artifactPaths: ['/source-a'], shell: {title: '新品牌'}}} />);
-  expect((await screen.findByRole('alert')).textContent).toContain('当前显示上一次成功结果');
+  expect((await screen.findByRole('alert')).textContent).toContain('showing the last successful map');
   expect(screen.getByText('项目列表')).toBeTruthy();
 });
 

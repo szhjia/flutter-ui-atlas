@@ -13,20 +13,20 @@ const roles = ['user1', 'user2'].map((tag, index) => ({
   credentials: {username: tag, password: 'unit-test-only'}
 }));
 
-test('The shop catalog expands to 16 states and 21 actions with shared anonymous states', async () => {
+test('The shop catalog expands to 11 account-route pages and 16 navigation actions', async () => {
   const config = parse(await readFile(source, 'utf8'));
   const catalog = expandCatalog({...config, authentication: {type: 'form'}}, roles);
-  assert.equal(catalog.screens.length, 16);
-  assert.equal(new Set(catalog.screens.map(screen => screen.id)).size, 16);
-  assert.equal(catalog.edges.length, 21);
-  assert.equal(catalog.screens.filter(screen => screen.id.startsWith('@anonymous:')).length, 2);
+  assert.equal(catalog.screens.length, 11);
+  assert.equal(new Set(catalog.screens.map(screen => screen.id)).size, 11);
+  assert.equal(catalog.edges.length, 16);
+  assert.equal(catalog.screens.filter(screen => screen.id.startsWith('@anonymous:')).length, 1);
   assert(
     config.screens
       .find(screen => screen.id === 'login')
       .ready.all.some(condition => condition.not?.text === 'Incorrect username or password')
   );
   for (const role of roles) {
-    assert.equal(catalog.screens.filter(screen => screen.id.startsWith(role.id + ':')).length, 7);
+    assert.equal(catalog.screens.filter(screen => screen.id.startsWith(role.id + ':')).length, 5);
     assert(
       catalog.screens
         .find(screen => screen.id === `${role.id}:home`)
@@ -57,23 +57,30 @@ test('Phone and pad use standard YAML profiles without passwords or preview inje
   assert(!/atlasSession|demoAccount|demoCart|demoError|adapterConfig/.test(text));
   assert(config.screens.every(screen => Array.isArray(screen.ready.all) && screen.ready.all.length >= 2));
   const actions = new Set(config.screens.flatMap(screen => screen.prepare).map(step => step.action));
-  assert.deepEqual([...actions].sort(), ['click', 'fill', 'goto', 'wait']);
+  assert.deepEqual([...actions].sort(), ['click', 'goto', 'wait']);
 });
 
-test('Cart and product readiness checks include content, identity, and quantity', async () => {
+test('Routes are unique while cart readiness validates empty and populated content', async () => {
   const config = parse(await readFile(source, 'utf8'));
-  const find = id => config.screens.find(screen => screen.id === id).ready.all;
-  assert(find('cart-full').some(item => item.text === 'Total ¥69.00'));
+  assert.equal(new Set(config.screens.map(screen => screen.route)).size, config.screens.length);
+  const cart = config.screens.find(screen => screen.id === 'cart');
+  const variants = cart.ready.all.find(condition => condition.any).any;
+  assert(variants.some(branch => branch.all.some(item => item.text === 'Your cart is empty')));
+  assert(variants.some(branch => branch.all.some(item => item.text === 'Total ¥69.00')));
   assert(
-    find('cart-full').some(item => item.role === 'group' && item.name === 'Travel cup ¥69.00 Travel cup quantity: 1')
+    variants.some(branch =>
+      branch.all.some(item => item.role === 'group' && item.name === 'Travel cup ¥69.00 Travel cup quantity: 1')
+    )
   );
-  assert(find('cart-empty').some(item => item.text === 'Your cart is empty'));
-  assert(find('detail').some(item => item.role === 'heading' && item.name === 'Travel cup'));
-  assert(find('detail').some(item => item.text === '¥69.00'));
-  for (const screen of config.screens.filter(screen => !screen.roles?.includes('@anonymous'))) {
+  const detail = config.screens.find(screen => screen.id === 'detail');
+  assert(detail.ready.all.some(item => item.text === '¥69.00'));
+  for (const screen of config.screens.filter(screen => !screen.roles?.includes('@anonymous')))
     assert(screen.ready.all.some(item => item.text === 'Account: {{role.username}}'));
-    assert(screen.ready.all.some(item => /^Cart items: [01]$/.test(item.name ?? '')));
-  }
+  const edge = config.edges.find(edge => edge.id === 'view-cart');
+  assert.equal(edge.source, 'detail');
+  assert.equal(edge.target, 'cart');
+  assert(edge.steps.some(step => step.target?.name === 'Add to cart'));
+  assert(!config.edges.some(edge => ['wrong-password', 'add', 'remove'].includes(edge.id)));
 });
 
 test('Responsive navigation declares both semantic locators and uses real clicks', async () => {

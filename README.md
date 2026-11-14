@@ -2,15 +2,19 @@
 
 [中文说明](README.zh-CN.md)
 
-A desktop canvas for exploring a Flutter app's screens, states, and navigation. Atlas captures your running Flutter Web app in Chrome and places the results on a map you can pan, arrange, and inspect.
+A desktop canvas for exploring a Flutter app's routes, accounts, and navigation. Atlas captures your running Flutter Web app in Chrome and places the results on a map you can pan, arrange, and inspect.
 
 Compare accounts and viewports, follow verified transitions, or open a screen in a separate Chrome session to try it yourself. Saved maps remain available after the app stops.
+
+![Atlas canvas showing the shop demo's captured screens and verified navigation](docs/images/atlas-canvas.png)
+
+_A real demo capture with a balanced layout and verified navigation across accounts._
 
 ## Philosophy
 
 Keep the app ordinary. Atlas connects to an existing Web URL; it needs no SDK, custom entry point, or changes to your widgets. You run the app with your usual tools.
 
-Describe what matters. YAML defines pages, states, readiness checks, and actions. Accounts live in a local configuration page. App-specific behavior belongs in a trusted adapter when the standard steps are not enough.
+Describe what matters. YAML defines one page per account and route, readiness checks, and navigation actions. Accounts live in a local configuration page. App-specific behavior belongs in a trusted adapter when the standard steps are not enough.
 
 Show what was checked. A screenshot records a screen. A transition is marked `observed` only after a real action reaches the expected route and content. Failed captures keep the last successful map.
 
@@ -69,7 +73,7 @@ edges:
         target: {role: button, name: Open settings}
 ```
 
-Use your app's actual routes and accessible labels. `prepare` steps can reproduce a state before capture; `roles` can restrict a page to selected accounts. Build all profiles with `atlas build`, or select one with `atlas build --profile phone` and `atlas view --profile phone`.
+Use your app's actual routes and accessible labels. Declare each route once per account; errors, empty/populated content, and other in-page changes do not create additional nodes or navigation edges. `prepare` steps can reproduce a state before capture; `roles` can restrict a page to selected accounts. Build all profiles with `atlas build`, or select one with `atlas build --profile phone` and `atlas view --profile phone`.
 
 On the canvas, drag and lock screens, filter the map, inspect screenshots, and undo layout changes. With a page catalog in place, select a screen to open a live session: Atlas signs in and prepares it in an independent Chrome context, then cleans up the session when it closes.
 
@@ -91,7 +95,7 @@ To map it, run `atlas init --url http://127.0.0.1:60210/ --ready-text "Sign in t
 
 ## Agent skill
 
-The English [flutter-ui-atlas skill](.agents/skills/flutter-ui-atlas/SKILL.md) helps coding agents connect an app, describe its states, and verify captures. For use in another project, copy its folder into that project's `.agents/skills/` or your agent's skill directory.
+The English [flutter-ui-atlas skill](.agents/skills/flutter-ui-atlas/SKILL.md) helps coding agents connect an app, describe its routes, and verify captures. For use in another project, copy its folder into that project's `.agents/skills/` or your agent's skill directory.
 
 ## Development
 
@@ -112,9 +116,26 @@ Detailed [protocol](docs/协议与适配接口.md) and [architecture](docs/架�
 
 - [React Flow](https://reactflow.dev/) (`@xyflow/react`) provides the node-and-edge canvas: screen nodes, navigation edges, pan, zoom, and selection. It is the foundation of the Viewer.
 - [React](https://react.dev/) powers the Viewer and configuration page.
+- [shadcn/ui](https://ui.shadcn.com/) supplies the Viewer Header controls, popovers, and tooltips, built on Radix primitives. [Lucide](https://lucide.dev/) provides their icons.
 - [Playwright](https://playwright.dev/) drives Chrome for captures, login checks, and live sessions.
-- [Tabler Icons](https://tabler.io/icons) supplies the canvas and configuration icons.
+- [Tabler Icons](https://tabler.io/icons) supplies the configuration page icons.
 
 ## Star history
 
 [![Star History Chart](https://api.star-history.com/svg?repos=szhjia/flutter-ui-atlas&type=Date)](https://www.star-history.com/#szhjia/flutter-ui-atlas&Date)
+
+## Account workspaces and reusable builds
+
+The canvas shows one account at a time. Each account has its own layout, viewport, selection, and live session. Public sign-in pages share their original capture evidence, while navigation stays within the selected account. Account names can change without changing their UUIDs.
+
+For standard `.atlas/atlas.yaml` projects, `atlas build` reuses successful account/profile revisions when their declared inputs and resource checksums match. It preserves the original capture IDs and times and does not launch Chrome on a complete cache hit. Use `atlas build --force` to capture current runtime data again. Source fingerprints cannot prove that server data, authentication, or the running Web build stayed unchanged. A reused map is historical evidence, not a new verification.
+
+Inputs include page declarations, readiness and navigation steps, authentication, account credentials, browser channel, viewport, and source content. `sourceFiles` paths remain relative to `.atlas/atlas.yaml` and may name files or directories. Without an explicit list, Atlas covers `lib/`, `web/`, dependency declarations, local assets/fonts, and project-local path dependencies. Unsupported external or symbolic inputs disable reuse. Git is not required; HEAD alone never decides reuse. Custom adapters and discovery continue to capture rather than claiming a cache hit with incomplete inputs.
+
+Authentication modules use Node file URL rules for relative ESM imports, including percent-encoded filenames. Importing `node:module` disables cache reuse and live sessions from captured snapshots: `createRequire` can load dependencies through arbitrary aliases that the static ESM graph cannot verify. Non-`.mjs` authentication dependencies also disable reuse because their module format or CommonJS dependencies are not fully tracked. Fresh captures through a new CLI process remain supported. Within one build snapshot, the same adapter can serve multiple pages and accounts. Atlas tracks loaded authentication dependencies by their real file paths and requested-path-to-target resolution across entry modules. File and directory symlinks inside declared module paths disable reuse; retargeting a loaded dependency requires restarting the service even within the same build scope. The configuration directory is canonicalized before resolving declared module paths. Changed shared dependencies require a service restart. Since an incomplete graph may populate Node’s cache outside its visible dependencies, module authentication cannot cross operation scopes after such a graph is loaded; loading an incomplete graph after another operation also requires a restart. Restart the Atlas service before testing again, or use fully tracked `.mjs` dependencies.
+
+Successful revisions are immutable. One application index switches only after every required account/profile in the command succeeds. A failed build keeps the previous index. All configuration, cache records, credentials, captures, and indexes remain private under `.atlas/`.
+
+Set an optional `pageName: LoginPage` on a page declaration to show the application's actual page name. Atlas displays this declared value; it does not infer Dart class names. Without `pageName`, the existing page title is used. Cards show the page name, route, and screenshot; capture diagnostics remain in the details panel.
+
+Run `atlas doctor` to check the installed Node runtime, package dependencies, prebuilt Viewer, Chrome, configured application URL, and source coverage. The installed package provides Playwright and YAML libraries, but requires a compatible Node.js runtime and an installed Google Chrome. It does not download browsers or run Flutter. A cache hit and offline viewing do not require a running application; a fresh capture and live session do.

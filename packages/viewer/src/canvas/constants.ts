@@ -27,4 +27,4 @@ export const DRAG_MAX_DISPLACED = 12;
 export const NEAREST_RING_LIMIT = 40;
 export const NEAREST_ATTEMPT_BUDGET = 2048;
 /** 画布缩放范围（layout-storage 校验与 ReactFlow minZoom/maxZoom 共用）。 */
-export const CANVAS_ZOOM = {min: 0.08, max: 1.8};
+export const CANVAS_ZOOM = {base: 0.65, min: 0.325, max: 1.3};

@@ -1,3 +1,6 @@
+import {readWorkspaceManifest, optionalJson, privateKey, dependencyKey} from './workspace-build.mjs';
+import {fingerprintSources, captureInputs, workspaceCatalog} from './build-input.mjs';
+import {expandCatalog} from './project-catalog.mjs';
 import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {isDeepStrictEqual} from 'node:util';
@@ -12,46 +15,7 @@ import {capture} from '../capture/index.mjs';
 export const isStandardProject = input => input.managed && !input.custom && Array.isArray(input.config.screens);
 export const profileOutput = (output, profile) => (profile.name ? join(output, profile.name) : output);
 
-export async function buildStandard(input, profiles, launchBrowser) {
-  const store = await createConfigStore({configFile: join(input.directory, 'atlas.yaml')});
-  const snapshot = await store.readBuildSnapshot();
-  if (
-    !isDeepStrictEqual({...snapshot.config, output: snapshot.config.output ?? 'generated'}, input.config) ||
-    input.output !== resolve(snapshot.directory, snapshot.config.output ?? 'generated') ||
-    input.publicPath !== (snapshot.config.publicPath ?? '/generated') ||
-    profiles.some(profile => !selectProfiles(snapshot.config).some(current => isDeepStrictEqual(current, profile)))
-  )
-    throw Error('配置在读取期间发生变化，请重新运行命令');
-  let failed = false;
-  for (const profile of profiles) {
-    try {
-      await validateAtlasOutput(input.directory, profileOutput(input.output, profile));
-      const result = await capture({
-        output: profileOutput(input.output, profile),
-        publicPath: input.publicPath,
-        viewport: profile.viewport,
-        requireObservedEdges: snapshot.config.requireObservedEdges,
-        adapter: () => createProjectAdapter({snapshot, profile}),
-        launchBrowser
-      });
-      const summary = {
-        profile: profile.name,
-        captureId: result.captureId,
-        pages: result.screens.length,
-        captured: result.screens.filter(s => s.status === 'captured').length,
-        observedEdges: result.edges.filter(e => e.status === 'observed').length,
-        failedEdges: result.edges.filter(e => e.status === 'failed').length,
-        runtimeErrors: result.runtimeErrors.length
-      };
-      if (summary.pages !== summary.captured || summary.failedEdges || summary.runtimeErrors) failed = true;
-      console.log(JSON.stringify(summary));
-    } catch (error) {
-      failed = true;
-      console.error(`视口 ${profile.name ?? '默认'} 构建失败：${error.message}`);
-    }
-  }
-  return failed ? 1 : 0;
-}
+export {buildWorkspaces as buildStandard} from './workspace-build.mjs';
 
 export async function standardLiveSessions(input, profile, launchBrowser) {
   const store = await createConfigStore({configFile: join(input.directory, 'atlas.yaml')});
@@ -75,19 +39,61 @@ export async function standardLiveSessions(input, profile, launchBrowser) {
       };
       signal.addEventListener('abort', aborted, {once: true});
       try {
-        const manifest = JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8'));
+        const bundle = await readWorkspaceManifest(input.output, profile.name);
+        const manifest = bundle
+          ? bundle.workspaces
+              .map(w => w.map)
+              .find(m => m.captureId === captureId && m.screens.some(s => s.id === screenId))
+          : JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8'));
+        if (!manifest) throw Error('当前图谱已变化或页面不存在，请刷新画布');
         if (
           manifest.captureId !== captureId ||
           !manifest.screens.some(s => s.id === screenId && s.status === 'captured')
         )
           throw Error('当前图谱已变化或页面不存在，请刷新画布');
-        const record = await store.readBuildRecord(captureId);
-        if (record.profileName !== profile.name || JSON.stringify(record.viewport) !== JSON.stringify(profile.viewport))
-          throw Error('图谱视口与当前配置不一致，请重新构建');
-        const snapshot = await store.readBuildSnapshot({captureId});
+        let snapshot, expectedKey, cacheSecret;
+        if (bundle) {
+          snapshot = await store.readBuildSnapshot();
+          const stateDir = join(input.directory, 'build-state');
+          const state = await optionalJson(join(stateDir, `${bundle.generationId}.json`));
+          const source = await fingerprintSources(snapshot.config, input.directory);
+          if (!source.reusable)
+            throw new ConfigError(
+              'Input freshness cannot be verified. Declare complete project-local inputs before opening a live session.',
+              409
+            );
+          const subset = workspaceCatalog(expandCatalog(snapshot.config, snapshot.roles), manifest.accountId);
+          cacheSecret = await privateKey(stateDir);
+          const key = dependencyKey(cacheSecret, captureInputs(snapshot, subset, profile, source));
+          expectedKey = key;
+          if (state?.records?.[`${manifest.profileId}/${manifest.accountId}`]?.key !== key)
+            throw new ConfigError('配置或凭据已变化，请重新构建。', 409);
+        } else {
+          const record = await store.readBuildRecord(captureId);
+          if (
+            record.profileName !== profile.name ||
+            JSON.stringify(record.viewport) !== JSON.stringify(profile.viewport)
+          )
+            throw Error('图谱视口与当前配置不一致，请重新构建');
+          snapshot = await store.readBuildSnapshot({captureId});
+        }
         const adapter = createProjectAdapter({snapshot, profile});
         const assertSource = async () => {
-          if (((await adapter.sourceFingerprint?.()) ?? '') !== manifest.sourceFingerprint)
+          if (bundle) {
+            const current = await store.readBuildSnapshot();
+            const source = await fingerprintSources(current.config, input.directory);
+            const subset = workspaceCatalog(expandCatalog(current.config, current.roles), manifest.accountId);
+            const currentProfile = selectProfiles(current.config, profile.name ?? undefined).find(
+              p => p.name === profile.name
+            );
+            if (
+              !source.reusable ||
+              !currentProfile ||
+              dependencyKey(cacheSecret, captureInputs(current, subset, currentProfile, source)) !== expectedKey
+            )
+              throw new ConfigError('配置或凭据已变化，请重新构建。', 409);
+          }
+          if (!bundle && ((await adapter.sourceFingerprint?.()) ?? '') !== manifest.sourceFingerprint)
             throw new ConfigError('源码已变化，请重新构建', 409);
         };
         await assertSource();
@@ -101,7 +107,7 @@ export async function standardLiveSessions(input, profile, launchBrowser) {
         }
         session = await adapter.open({browser, screen, viewport: profile.viewport});
         await session.ready(screen);
-        await snapshot.assertCurrent();
+        if (!bundle) await snapshot.assertCurrent();
         await assertSource();
         if (signal.aborted) throw Error('实时会话已取消');
         await store.writeSessionRecord(sessionKey, {

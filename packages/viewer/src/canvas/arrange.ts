@@ -21,7 +21,30 @@ export function nearestFree(node: CanvasNode, occupied: CanvasNode[], origin: Po
   }
   return null;
 }
-export function arrangeNodes(nodes: CanvasNode[], edges: EdgeSpec[], movableIds: Set<string>): SolveResult {
+export type ArrangementMode = 'balanced' | 'horizontal' | 'vertical';
+export type ArrangementOptions = {mode?: ArrangementMode; aspectRatio?: number};
+
+export function balancedColumns(count: number, width: number, height: number, aspectRatio: number) {
+  let best = 1,
+    score = Infinity;
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const ratio = (cols * width + (cols - 1) * ARRANGE_GAP.x) / (rows * height + (rows - 1) * ARRANGE_GAP.y);
+    const next = Math.abs(Math.log(ratio / Math.max(0.2, aspectRatio))) + ((cols * rows - count) / count) * 0.1;
+    if (next < score) {
+      best = cols;
+      score = next;
+    }
+  }
+  return best;
+}
+
+export function arrangeNodes(
+  nodes: CanvasNode[],
+  edges: EdgeSpec[],
+  movableIds: Set<string>,
+  options: ArrangementOptions = {}
+): SolveResult {
   const moving = nodes.filter(n => movableIds.has(n.id) && !n.locked && !n.hidden),
     ids = new Set(moving.map(n => n.id));
   const adjacency = new Map(
@@ -87,6 +110,9 @@ export function arrangeNodes(nodes: CanvasNode[], edges: EdgeSpec[], movableIds:
   const occupied = nodes.filter(n => !ids.has(n.id)).map(n => ({...n})),
     placed = new Map<string, CanvasNode>();
   let groupY = 0;
+  const mode = options.mode ?? 'balanced';
+  const balancedCount = balancedColumns(moving.length, maxWidth, maxHeight, options.aspectRatio ?? 1.4);
+  let cursor = 0;
   for (const component of components) {
     const columns = new Map<number, number>();
     let bottom = groupY;
@@ -97,9 +123,15 @@ export function arrangeNodes(nodes: CanvasNode[], edges: EdgeSpec[], movableIds:
         row = columns.get(rank) ?? 0;
       columns.set(rank, row + 1);
       const point = nearestFree(n, occupied, {
-        x: rank * (maxWidth + ARRANGE_GAP.x),
-        y: groupY + row * (maxHeight + ARRANGE_GAP.y)
+        x:
+          (mode === 'balanced' ? cursor % balancedCount : mode === 'vertical' ? row : rank) *
+          (maxWidth + ARRANGE_GAP.x),
+        y:
+          mode === 'balanced'
+            ? Math.floor(cursor / balancedCount) * (maxHeight + ARRANGE_GAP.y)
+            : groupY + (mode === 'vertical' ? rank : row) * (maxHeight + ARRANGE_GAP.y)
       });
+      cursor++;
       if (!point) return {ok: false, reason: 'budget', nodes};
       const next = {...n, ...point};
       occupied.push(next);
@@ -107,6 +139,9 @@ export function arrangeNodes(nodes: CanvasNode[], edges: EdgeSpec[], movableIds:
       bottom = Math.max(bottom, next.y + next.height);
     }
     groupY = bottom + COMPONENT_GAP;
+    if (mode === 'balanced' && moving.filter(n => root(n.id) === component).length > 1 && cursor % balancedCount) {
+      cursor += balancedCount - (cursor % balancedCount);
+    }
   }
   return {ok: true, nodes: nodes.map(n => placed.get(n.id) ?? n), affectedIds: moving.map(n => n.id)};
 }

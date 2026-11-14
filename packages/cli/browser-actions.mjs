@@ -36,6 +36,11 @@ export async function matchesReady(page, condition, {baseUrl, routeMode = 'hash'
   if (baseUrl && url.origin !== new URL(baseUrl).origin) return false;
   if (entry && routeMode === 'hash' && url.pathname !== new URL(entry).pathname) return false;
   if (condition?.not) return !(await matchesReady(page, condition.not, {baseUrl, routeMode, entry}));
+  if (condition?.any) {
+    if (!Array.isArray(condition.any) || !condition.any.length) throw Error('ready.any 必须是非空数组');
+    for (const part of condition.any) if (await matchesReady(page, part, {baseUrl, routeMode, entry})) return true;
+    return false;
+  }
   if (condition?.all) {
     if (!Array.isArray(condition.all) || !condition.all.length) throw Error('ready.all 必须是非空数组');
     for (const part of condition.all) if (!(await matchesReady(page, part, {baseUrl, routeMode, entry}))) return false;
@@ -84,13 +89,13 @@ export async function executeSteps(page, steps = [], options) {
   }
 }
 
-export function validateCondition(condition, depth = 0) {
+export function validateCondition(condition, depth = 0, locatorOnly = false) {
   if (!condition || typeof condition !== 'object' || depth > 20) throw Error('页面判据无效');
+  if (locatorOnly && (condition.all || condition.not || condition.route)) throw Error('操作目标必须是定位器');
   if (condition.any !== undefined) {
     if (!Array.isArray(condition.any) || !condition.any.length) throw Error('定位器 any 必须是非空数组');
     for (const part of condition.any) {
-      validateCondition(part, depth + 1);
-      if (part.all || part.not || part.route) throw Error('any 只接受定位器');
+      validateCondition(part, depth + 1, locatorOnly);
     }
   } else if (condition.all !== undefined) {
     if (!Array.isArray(condition.all) || !condition.all.length) throw Error('ready.all 必须是非空判据数组');
@@ -120,7 +125,7 @@ export function validateSteps(steps, baseUrl) {
     } else if (action === 'wait') validateCondition(step.ready ?? step.wait);
     else if (action === 'click' || action === 'fill') {
       const target = step.target ?? step[action];
-      validateCondition(target);
+      validateCondition(target, 0, true);
       if (target.all || target.not || target.route) throw Error('操作目标必须是定位器');
       if (action === 'fill' && typeof step.value !== 'string') throw Error('输入操作需要文字 value');
     } else throw Error('操作只支持 goto/click/fill/wait');

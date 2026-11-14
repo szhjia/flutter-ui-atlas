@@ -121,6 +121,27 @@ export function routeEdges(
   const byId = new Map(nodes.map(n => [n.id, n])),
     old = new Map(previous.map(e => [e.id, e])),
     obstacles = nodes.map(n => ({...expand(n), id: n.id}));
+  const ports = new Map<string, number>();
+  for (const node of nodes) {
+    for (const right of [false, true]) {
+      const incident = edges
+        .flatMap(edge => {
+          const source = edge.source === node.id;
+          if (!source && edge.target !== node.id) return [];
+          const other = byId.get(source ? edge.target : edge.source);
+          if (!other || other.x + other.width / 2 >= node.x + node.width / 2 !== right) return [];
+          return [{edge, source, other}];
+        })
+        .sort((a, b) => a.other.y - b.other.y || a.edge.id.localeCompare(b.edge.id));
+      const step = Math.min(EDGE_SIBLING_OFFSET, Math.max(1, node.height - 100) / Math.max(1, incident.length - 1));
+      incident.forEach((item, i) =>
+        ports.set(
+          `${item.edge.id}:${item.source ? 'source' : 'target'}`,
+          node.y + node.height / 2 + (i - (incident.length - 1) / 2) * step
+        )
+      );
+    }
+  }
   return [...edges]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((e, index) => {
@@ -132,6 +153,8 @@ export function routeEdges(
         cached?.status === 'routed' &&
         !changedIds.has(a.id) &&
         !changedIds.has(b.id) &&
+        cached.points[0]?.y === ports.get(`${e.id}:source`) &&
+        cached.points.at(-1)?.y === ports.get(`${e.id}:target`) &&
         pathClear(
           cached.points,
           obstacles.filter(n => changedIds.has(n.id) && n.id !== a.id && n.id !== b.id)
@@ -167,8 +190,8 @@ export function routeEdges(
         };
       }
       const right = b.x + b.width / 2 >= a.x + a.width / 2;
-      const start = {x: right ? a.x + a.width : a.x, y: a.y + a.height / 2 + offset},
-        end = {x: right ? b.x : b.x + b.width, y: b.y + b.height / 2 + offset};
+      const start = {x: right ? a.x + a.width : a.x, y: ports.get(`${e.id}:source`) ?? a.y + a.height / 2 + offset},
+        end = {x: right ? b.x : b.x + b.width, y: ports.get(`${e.id}:target`) ?? b.y + b.height / 2 + offset};
       const out = {x: start.x + (right ? EDGE_STUB_LENGTH : -EDGE_STUB_LENGTH), y: start.y},
         into = {x: end.x + (right ? -EDGE_STUB_LENGTH : EDGE_STUB_LENGTH), y: end.y};
       if (

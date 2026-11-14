@@ -47,7 +47,7 @@ export async function createConfigStore({cwd = process.cwd(), configFile} = {}) 
     try {
       gitRoot = (await run('git', ['-C', root, 'rev-parse', '--show-toplevel'])).stdout.trim();
     } catch (error) {
-      if (error.code === 128) return;
+      if (error.code === 128 || error.code === 'ENOENT') return;
       throw new ConfigError('无法检查 Git 跟踪状态，请确认 Git 可用后重试。');
     }
     const files = (await run('git', ['-C', gitRoot, 'ls-files', '-z', '--', relative(gitRoot, local)])).stdout;

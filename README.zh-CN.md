@@ -2,15 +2,21 @@
 
 [English](README.md)
 
-把真实 Flutter 应用的页面、状态和导航整理到一张桌面画布上。Atlas 通过 Chrome 采集已运行的 Flutter Web 应用，生成可以拖动、缩放和查看截图的页面地图。
+把真实 Flutter 应用的路由、账户和导航整理到一张桌面画布上。Atlas 通过 Chrome 采集已运行的 Flutter Web 应用，生成可以拖动、缩放和查看截图的页面地图。
+
+每个账户的同一路由只对应一个页面节点；错误提示、空态／有数据等页面内变化不会新增节点或导航连线。
 
 你可以对比不同账户与视口，查看经过验证的导航，也可以在独立 Chrome 会话中打开某个页面直接操作。应用停止后，已保存的地图仍然可以查看。
+
+![Atlas 画布展示商城 Demo 的真实页面截图与已验证导航](docs/images/atlas-canvas.png)
+
+_独立商城 Demo 的实际画布：以均衡布局对比不同账户的路由页面与已验证导航。_
 
 ## 设计取舍
 
 **让应用保持普通。** Atlas 连接已有 Web 地址，无需 SDK、专用入口或修改组件。应用仍由你熟悉的工具启动和构建。
 
-**声明需要查看的内容。** 用 YAML 描述页面、状态、就绪条件和操作，在本机配置页管理账户。标准步骤无法覆盖的应用差异，交给可信适配器处理。
+**声明需要查看的内容。** 用 YAML 按账户和路由声明页面、就绪条件和导航操作，在本机配置页管理账户。标准步骤无法覆盖的应用差异，交给可信适配器处理。
 
 **明确证据的范围。** 截图记录页面；只有真实操作到达预期路由和内容，连线才标记为 `observed`。采集失败时保留上一次成功的地图。
 
@@ -91,7 +97,7 @@ flutter run -d web-server --web-hostname 127.0.0.1 --web-port 60210
 
 ## Agent 技能
 
-英文 [flutter-ui-atlas 技能](.agents/skills/flutter-ui-atlas/SKILL.md) 用于协助 Agent 接入应用、声明状态并验证采集。其他项目可将整个技能目录复制到 `.agents/skills/` 或所用 Agent 的技能目录。
+英文 [flutter-ui-atlas 技能](.agents/skills/flutter-ui-atlas/SKILL.md) 用于协助 Agent 接入应用、声明路由并验证采集。其他项目可将整个技能目录复制到 `.agents/skills/` 或所用 Agent 的技能目录。
 
 ## 开发
 
@@ -113,8 +119,19 @@ pnpm test:browser
 - [React Flow](https://reactflow.dev/)（`@xyflow/react`）：Viewer 的画布基础，提供页面节点、导航连线、平移、缩放与选择。
 - [React](https://react.dev/)：构建画布与配置页。
 - [Playwright](https://playwright.dev/)：驱动 Chrome 采集、登录测试与实时会话。
-- [Tabler Icons](https://tabler.io/icons)：画布与配置页图标。
+- [shadcn/ui](https://ui.shadcn.com/)：Viewer Header 的基础控件、弹层和提示，交互基于 Radix；图标使用 [Lucide](https://lucide.dev/)。
+- [Tabler Icons](https://tabler.io/icons)：配置页图标。
 
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=szhjia/flutter-ui-atlas&type=Date)](https://www.star-history.com/#szhjia/flutter-ui-atlas&Date)
+
+## 账户工作空间与构建复用
+
+画布任意时刻只显示一个账户，布局、镜头、选择与实时会话按账户隔离。公共登录页引用原始截图，关联导航不会进入其他账户。
+
+标准 YAML 工程的 `atlas build` 在输入和产物校验一致时复用上次成功版本，保留原采集 ID 与时间；`atlas build --force` 重新采集。缓存命中不启动 Chrome。Git HEAD 不是唯一依据，无 Git 时仍使用内容指纹。源码未变不能证明运行中的 Web 产物、远端数据或认证状态未变，复用图谱明确属于历史证据。
+
+`sourceFiles` 相对 YAML 目录解析，可指定文件或目录；默认覆盖源码、Web 文件、依赖声明、资源与字体及项目内 path 依赖。无法完整覆盖的外部或符号链接输入禁用复用。整次命令的账户与视口统一发布，失败保留旧索引。
+
+页面可声明 `pageName: LoginPage`，工具不猜测 Dart 类名。`atlas doctor` 检查安装依赖、Chrome、应用可达性和源码覆盖。安装包包含 Playwright/YAML 和预构建 Viewer，本机仍需 Node 与 Chrome；Atlas 不下载浏览器，不启动 Flutter。

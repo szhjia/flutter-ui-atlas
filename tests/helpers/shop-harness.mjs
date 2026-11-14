@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {execFile, spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {once} from 'node:events';
+import {createRequire} from 'node:module';
 import {access, cp, mkdtemp, readFile, readdir, realpath, stat, symlink, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:net';
 import {tmpdir} from 'node:os';
@@ -82,6 +83,7 @@ export function shopCliEnvironment() {
       await symlink(target, join(directory, name));
     }
     const env = {...process.env, PATH: directory, PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'};
+    delete env.NODE_PATH;
     const check = spawn('/bin/sh', ['-c', 'command -v flutter'], {env, stdio: 'ignore'});
     const [code] = await once(check, 'exit');
     assert.equal(code, 1, 'CLI 验收环境必须找不到 flutter');
@@ -140,6 +142,12 @@ export function installShopCli() {
     assert.equal(code, 0, output);
     const cli = join(directory, 'node_modules/flutter-ui-atlas/packages/cli/atlas.mjs');
     assert((await realpath(cli)).startsWith(await realpath(directory)), '必须运行临时工程内安装的 CLI');
+    const installedRequire = createRequire(cli);
+    for (const dependency of ['playwright', 'yaml', 'es-module-lexer'])
+      assert(
+        (await realpath(installedRequire.resolve(dependency))).startsWith(await realpath(directory)),
+        'Dependency must resolve inside the isolated installation'
+      );
     return cli;
   })());
 }

@@ -2,6 +2,7 @@ import {mkdir, writeFile, rename, rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {stripVTControlCharacters} from 'node:util';
 import {acquireOutputLock} from './lock.mjs';
+import {assertUniqueRoutes} from './route-identity.mjs';
 
 export function validateCatalog({screens, edges}) {
   if (!Array.isArray(screens) || !Array.isArray(edges) || !screens.length) throw Error('目录不能为空');
@@ -10,11 +11,16 @@ export function validateCatalog({screens, edges}) {
     for (const key of ['id', 'role', 'entry', 'route', 'title', 'group', 'state']) {
       if (typeof screen?.[key] !== 'string' || !screen[key].trim()) throw Error(`页面字段无效: ${key}`);
     }
+    if (screen.pageName !== undefined && (typeof screen.pageName !== 'string' || !screen.pageName.trim()))
+      throw Error('pageName must be a non-empty declared name.');
     if (ids.has(screen.id)) throw Error(`页面 ID 重复: ${screen.id}`);
     ids.add(screen.id);
   }
   const edgeIds = new Set();
+  assertUniqueRoutes(screens);
   for (const edge of edges) {
+    if (edge.source === edge.target)
+      throw Error('A navigation edge cannot target the same page. In-page changes are not navigation.');
     if (
       typeof edge?.id !== 'string' ||
       !edge.id.trim() ||
@@ -85,7 +91,8 @@ async function runCaptureBatch({
   output,
   publicPath = '/generated',
   viewport = {width: 393, height: 852},
-  requireObservedEdges = false
+  requireObservedEdges = false,
+  reusableScreens = []
 }) {
   const ownsBrowser = !browser && Boolean(launchBrowser);
   const {captureId, directory} = await createBatch(output);
@@ -120,10 +127,10 @@ async function runCaptureBatch({
     stage = 'source';
     const fingerprint = (await adapter.sourceFingerprint?.()) ?? '';
     result = {
-      theme: '默认主题',
+      theme: 'Default theme',
       scenarioId: 'default',
       seedVersion: '1',
-      scope: '适配器登记的页面状态与操作',
+      scope: 'Application routes and verified navigation',
       ...adapter.metadata,
       schemaVersion: 1,
       captureId,
@@ -141,8 +148,24 @@ async function runCaptureBatch({
     }
     stage = 'capture';
     for (const screen of catalog.screens) {
-      const {id, role, entry, route, title, group, state} = screen;
-      const node = {id, role, entry, route, title, group, state, status: 'failed'};
+      const {id, role, accountId, entry, route, title, pageName, group, state} = screen;
+      const reused = reusableScreens.find(s => s.id === id);
+      if (reused) {
+        result.screens.push({...reused});
+        continue;
+      }
+      const node = {
+        id,
+        role,
+        ...(accountId ? {accountId} : {}),
+        entry,
+        route,
+        title,
+        ...(pageName ? {pageName} : {}),
+        group,
+        state,
+        status: 'failed'
+      };
       try {
         await session(screen, async current => {
           const file = `${result.screens.length}.png`;

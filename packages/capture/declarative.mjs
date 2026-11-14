@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {assertLoopback} from './web-boundary.mjs';
+import {assertUniqueRoutes} from './route-identity.mjs';
 
 export function webUrl(value, base) {
   const url = new URL(value, base);
@@ -111,12 +112,15 @@ export function declarativeConfig(config, configDirectory) {
       ...spec,
       route: routeOf(url),
       entry: url.href,
-      role: spec.role ?? '默认',
-      group: spec.group ?? '页面',
-      state: spec.state ?? '默认状态'
+      role: spec.role ?? 'Default',
+      group: spec.group ?? 'Screens',
+      state: spec.state ?? 'Default'
     };
   });
+  assertUniqueRoutes(screens);
   const edges = (config.edges ?? []).map(edge => {
+    if (edge.source === edge.target)
+      throw Error('A navigation edge cannot target the same page. In-page changes are not navigation.');
     if (edge.click !== undefined) checkLocator(edge.click, `连线 ${edge.id} 的 click`, true);
     return edge.click === undefined ? {...edge, verify: false} : edge;
   });

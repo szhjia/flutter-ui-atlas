@@ -8,28 +8,41 @@ test('自动采集保留未知候选，手动与测试录制合并同 URL 的真
   const output = await mkdtemp(join(tmpdir(), 'atlas-browser-discovery-'));
   const start = new URL('/atlas-discovery-test', baseURL).href;
   const viewport = {width: 393, height: 852};
-  const screen = (id: string, title: string) => ({id, title, role: id, group: '测试', entry: '/', route: '/', state: title});
+  const screen = (id: string, title: string) => ({
+    id,
+    title,
+    role: id,
+    group: '测试',
+    entry: '/',
+    route: '/',
+    state: title
+  });
   const first = screen('visitor', '访客');
   const second = screen('parent', '家长');
   const pending = screen('pending', '不可复现');
   const launchBrowser = async () => ({
     newContext: browser.newContext.bind(browser),
-    close: async () => {},
+    close: async () => {}
   });
   const openSession = async ({viewport: size}: {viewport: typeof viewport}) => {
     const context = await browser.newContext({viewport: size});
     const page = await context.newPage();
-    await page.route(start, route => route.fulfill({
-      contentType: 'text/html; charset=utf-8',
-      body: '<h1>访客</h1><flt-semantics role="button" tabindex="0">登录</flt-semantics><script>document.querySelector("flt-semantics").onclick=()=>{setTimeout(()=>{document.querySelector("h1").textContent="家长"},180)}</script>',
-    }));
+    await page.route(start, route =>
+      route.fulfill({
+        contentType: 'text/html; charset=utf-8',
+        body: '<h1>访客</h1><flt-semantics role="button" tabindex="0">登录</flt-semantics><script>document.querySelector("flt-semantics").onclick=()=>{setTimeout(()=>{document.querySelector("h1").textContent="家长"},180)}</script>'
+      })
+    );
     await page.goto(start);
-    return {page, errors: [], acceptsUrl: (url: string) => url === start,
+    return {
+      page,
+      errors: [],
+      acceptsUrl: (url: string) => url === start,
       close: () => context.close(),
       async observe() {
         if (await page.getByRole('heading', {name: '家长'}).isVisible()) return second;
-        return await page.getByRole('heading', {name: '访客'}).isVisible() ? first : null;
-      },
+        return (await page.getByRole('heading', {name: '访客'}).isVisible()) ? first : null;
+      }
     };
   };
   type DiscoverySession = Awaited<ReturnType<typeof openSession>>;
@@ -37,9 +50,13 @@ test('自动采集保留未知候选，手动与测试录制合并同 URL 的真
     sourceFingerprint: async () => 'same-source',
     candidates: async () => [{...first, direct: true}, second, {...pending, direct: true}],
     open: openSession,
-    async journeys({watch}: {watch: (session: DiscoverySession) => Promise<{
-      step(action: string, perform: () => Promise<void>): Promise<void>;
-    }>}) {
+    async journeys({
+      watch
+    }: {
+      watch: (session: DiscoverySession) => Promise<{
+        step(action: string, perform: () => Promise<void>): Promise<void>;
+      }>;
+    }) {
       const session = await openSession({viewport});
       try {
         const observer = await watch(session);
@@ -48,25 +65,42 @@ test('自动采集保留未知候选，手动与测试录制合并同 URL 的真
       } finally {
         await session.close();
       }
-    },
+    }
   };
   const config = {discovery, launchBrowser, output, publicPath: '/generated', viewport};
   try {
     const captured = await runDiscovery({...config, mode: 'capture'});
     expect(captured.screens.find((page: {id: string}) => page.id === pending.id)).toMatchObject({status: 'pending'});
     expect(captured.edges).toEqual([]);
-    const manual = await runDiscovery({...config, mode: 'manual', waitForStop: async (session: DiscoverySession) => {
-      await session.page.getByRole('button', {name: '登录'}).click();
-      await expect(session.page.getByRole('heading', {name: '家长'})).toBeVisible();
-    }});
-    expect(manual.edges).toEqual([expect.objectContaining({source: first.id, target: second.id, status: 'observed', recordingSources: ['manual']})]);
+    const manual = await runDiscovery({
+      ...config,
+      mode: 'manual',
+      waitForStop: async (session: DiscoverySession) => {
+        await session.page.getByRole('button', {name: '登录'}).click();
+        await expect(session.page.getByRole('heading', {name: '家长'})).toBeVisible();
+      }
+    });
+    expect(manual.edges).toEqual([
+      expect.objectContaining({source: first.id, target: second.id, status: 'observed', recordingSources: ['manual']})
+    ]);
     const replayed = await runDiscovery({...config, mode: 'journeys'});
-    expect(replayed.edges).toEqual([expect.objectContaining({source: first.id, target: second.id, recordingSources: ['manual', 'test']})]);
+    expect(replayed.edges).toEqual([
+      expect.objectContaining({source: first.id, target: second.id, recordingSources: ['manual', 'test']})
+    ]);
     expect(replayed.screens.find((page: {id: string}) => page.id === second.id)).toMatchObject({status: 'captured'});
     const before = await readFile(join(output, 'manifest.json'), 'utf8');
-    await expect(runDiscovery({...config, mode: 'journeys', discovery: {...discovery, journeys: async () => {
-      throw Error('流程断言失败');
-    }}})).rejects.toThrow('流程断言失败');
+    await expect(
+      runDiscovery({
+        ...config,
+        mode: 'journeys',
+        discovery: {
+          ...discovery,
+          journeys: async () => {
+            throw Error('流程断言失败');
+          }
+        }
+      })
+    ).rejects.toThrow('流程断言失败');
     expect(await readFile(join(output, 'manifest.json'), 'utf8')).toBe(before);
     const attempt = JSON.parse(await readFile(join(output, 'latest-attempt.json'), 'utf8'));
     expect(attempt.status).toBe('failed');
@@ -74,9 +108,86 @@ test('自动采集保留未知候选，手动与测试录制合并同 URL 的真
     const batch = JSON.parse(await readFile(join(output, attempt.captureId, 'manifest.json'), 'utf8'));
     expect(batch.screens).toHaveLength(3);
     expect(batch.screens.find((page: {id: string}) => page.id === pending.id)).toMatchObject({status: 'pending'});
-    const next = await runDiscovery({...config, mode: 'capture', discovery: {...discovery, sourceFingerprint: async () => 'different'}});
+    const next = await runDiscovery({
+      ...config,
+      mode: 'capture',
+      discovery: {...discovery, sourceFingerprint: async () => 'different'}
+    });
     expect(next.edges).toEqual([]);
     expect(next.screens.find((page: {id: string}) => page.id === second.id)).toMatchObject({status: 'pending'});
+  } finally {
+    await rm(output, {recursive: true, force: true});
+  }
+});
+
+test('原地错误状态不产生重复路由节点或导航，旧状态产物不继续合并', async ({browser, baseURL}) => {
+  const output = await mkdtemp(join(tmpdir(), 'atlas-route-identity-'));
+  const start = new URL('/route-identity-test', baseURL).href;
+  const viewport = {width: 393, height: 852};
+  const screen = (id: string, route: string, state = 'Default') => ({
+    id,
+    route,
+    state,
+    role: 'Signed out',
+    entry: start,
+    title: route === '/login' ? 'Sign in' : 'Home',
+    group: 'App'
+  });
+  const login = screen('login', '/login'),
+    home = screen('home', '/home');
+  const launchBrowser = async () => ({newContext: browser.newContext.bind(browser), close: async () => {}});
+  const openSession = async () => {
+    const context = await browser.newContext({viewport});
+    const page = await context.newPage();
+    await page.route(start, route =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<h1>Sign in</h1><button id="wrong">Wrong password</button><button id="home">Open home</button><script>document.querySelector("#wrong").onclick=()=>document.body.dataset.error="true";document.querySelector("#home").onclick=()=>{location.hash="/home";document.querySelector("h1").textContent="Home"}</script>'
+      })
+    );
+    await page.goto(start + '#/login');
+    return {
+      page,
+      errors: [],
+      acceptsUrl: (url: string) => url.startsWith(start),
+      close: () => context.close(),
+      observe: async () =>
+        page.url().endsWith('#/home')
+          ? home
+          : (await page.locator('body').getAttribute('data-error'))
+            ? screen('login-error', '/login', 'Wrong password')
+            : login
+    };
+  };
+  const discovery = {
+    sourceFingerprint: async () => 'route-identity',
+    candidates: async () => [login, home],
+    open: openSession,
+    journeys: async ({watch}: any) => {
+      const session = await openSession();
+      try {
+        const observer = await watch(session);
+        await observer.step('Wrong password', () => session.page.getByRole('button', {name: 'Wrong password'}).click());
+        await observer.step('Open home', () => session.page.getByRole('button', {name: 'Open home'}).click());
+      } finally {
+        await session.close();
+      }
+    }
+  };
+  const config = {discovery, launchBrowser, output, publicPath: '/generated', viewport, mode: 'journeys'};
+  try {
+    const result = await runDiscovery(config);
+    expect(result.screens).toHaveLength(2);
+    expect(result.edges).toEqual([
+      expect.objectContaining({source: 'login', target: 'home', action: 'Open home', status: 'observed'})
+    ]);
+    const {writeFile} = await import('node:fs/promises');
+    result.screens.push({...result.screens[0], id: 'legacy-error', state: 'Wrong password'});
+    await writeFile(join(output, 'manifest.json'), JSON.stringify(result));
+    const recaptured = await runDiscovery(config);
+    expect(recaptured.screens).toHaveLength(2);
+    expect(recaptured.edges).toHaveLength(1);
+    expect(recaptured.diagnostics.join(' ')).toMatch(/previous|duplicate/i);
   } finally {
     await rm(output, {recursive: true, force: true});
   }

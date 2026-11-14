@@ -9,7 +9,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 
-test('采集配置无效时仍能用相同配置查看已有地图及失败报告', {timeout:15000}, async () => {
+test('采集配置无效时仍能用相同配置查看已有地图及失败报告', {timeout: 15000}, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'atlas-view-recovery-'));
   const probe = createServer().listen(0, '127.0.0.1');
   await once(probe, 'listening');
@@ -21,21 +21,31 @@ test('采集配置无效时仍能用相同配置查看已有地图及失败报�
   let view;
   try {
     await mkdir(output);
-    await writeFile(join(output, 'manifest.json'), JSON.stringify({schemaVersion:1,captureId:'old',screens:[],edges:[]}));
-    await writeFile(config, JSON.stringify({
-      port, output, baseUrl:'http://127.0.0.1:1',
-      title: '采集项目名',
-      viewer: {shell: {title: '示例应用', logoUrl: 'https://example.com/brand.png', logoText: '示'}},
-      screens:[{id:'home',title:'首页',route:'/',ready:{}}],
-    }));
-    const failed = spawn(process.execPath, [cli, 'capture', '--config', config], {stdio:'ignore'});
+    await writeFile(
+      join(output, 'manifest.json'),
+      JSON.stringify({schemaVersion: 1, captureId: 'old', screens: [], edges: []})
+    );
+    await writeFile(
+      config,
+      JSON.stringify({
+        port,
+        output,
+        baseUrl: 'http://127.0.0.1:1',
+        title: '采集项目名',
+        viewer: {shell: {title: '示例应用', logoUrl: 'https://example.com/brand.png', logoText: '示'}},
+        screens: [{id: 'home', title: '首页', route: '/', ready: {}}]
+      })
+    );
+    const failed = spawn(process.execPath, [cli, 'capture', '--config', config], {stdio: 'ignore'});
     assert.deepEqual(await once(failed, 'exit'), [1, null]);
-    view = spawn(process.execPath, [cli, 'view', '--config', config], {stdio:['ignore','pipe','pipe']});
+    view = spawn(process.execPath, [cli, 'view', '--config', config], {stdio: ['ignore', 'pipe', 'pipe']});
     await new Promise((resolve, reject) => {
       let output = '';
       const onExit = code => reject(Error(`预览提前退出 ${code}: ${output}`));
       view.once('exit', onExit);
-      view.stderr.on('data', chunk => {output += chunk;});
+      view.stderr.on('data', chunk => {
+        output += chunk;
+      });
       view.stdout.on('data', chunk => {
         output += chunk;
         if (output.includes(`http://127.0.0.1:${port}/`)) {
@@ -49,7 +59,9 @@ test('采集配置无效时仍能用相同配置查看已有地图及失败报�
     const embeddedConfig = html.match(/id="atlas-config">([^<]+)<\/script>/)?.[1];
     assert(embeddedConfig, 'CLI 应向 Viewer 注入配置');
     assert.deepEqual(JSON.parse(embeddedConfig).shell, {
-      title: '示例应用', logoUrl: 'https://example.com/brand.png', logoText: '示',
+      title: '示例应用',
+      logoUrl: 'https://example.com/brand.png',
+      logoText: '示'
     });
     const script = html.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
     assert(script, '安装后的画布应加载预编译脚本');
@@ -59,12 +71,14 @@ test('采集配置无效时仍能用相同配置查看已有地图及失败报�
       request(viewer, {headers: {Host: 'external.invalid'}}, response => {
         response.resume();
         resolve(response.statusCode);
-      }).on('error', reject).end();
+      })
+        .on('error', reject)
+        .end();
     });
     assert.equal(untrusted, 421);
     const base = `http://127.0.0.1:${port}/generated`;
-    assert.equal((await (await fetch(base+'/manifest.json')).json()).captureId, 'old');
-    const attempt = await (await fetch(base+'/latest-attempt.json')).json();
+    assert.equal((await (await fetch(base + '/manifest.json')).json()).captureId, 'old');
+    const attempt = await (await fetch(base + '/latest-attempt.json')).json();
     assert.equal(attempt.status, 'failed');
     assert.match(attempt.error, /ready/);
     assert.equal((await fetch(new URL(attempt.report, base))).status, 200);
@@ -74,6 +88,6 @@ test('采集配置无效时仍能用相同配置查看已有地图及失败报�
       view.kill();
       await exited;
     }
-    await rm(directory, {recursive:true, force:true});
+    await rm(directory, {recursive: true, force: true});
   }
 });

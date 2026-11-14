@@ -1,4 +1,4 @@
-# Declarative catalog for a regular Flutter app; enter valid passwords through the local configuration page.
+# One page per account and route; enter valid passwords through the local configuration page.
 title: Shiwu shop verification
 baseUrl: http://127.0.0.1:60212/
 routeMode: hash
@@ -24,9 +24,10 @@ sourceFiles:
   - ../web/index.html
 screens:
   - id: login
+    pageName: LoginPage
     title: Sign in to Shiwu
     roles:
-      - '@anonymous'
+      - "@anonymous"
     route: /login
     group: Sign in
     state: Default
@@ -45,47 +46,8 @@ screens:
           name: Password
         - role: button
           name: Sign in
-  - id: login-error
-    title: Sign in to Shiwu
-    roles:
-      - '@anonymous'
-    route: /login
-    group: Sign in
-    state: Wrong password
-    prepare:
-      - action: goto
-        url: /#/login
-      - action: wait
-        ready:
-          all:
-            - kind: label
-              name: Username
-            - kind: label
-              name: Password
-      - action: fill
-        target:
-          kind: label
-          name: Username
-        value: user1
-      - action: fill
-        target:
-          kind: label
-          name: Password
-        value: wrong
-      - action: click
-        target:
-          role: button
-          name: Sign in
-    ready:
-      all:
-        - role: heading
-          name: Sign in to Shiwu
-        - text: Incorrect username or password
-        - kind: label
-          name: Username
-        - kind: label
-          name: Password
   - id: home
+    pageName: HomePage
     title: Home
     route: /home
     group: Shop app
@@ -97,14 +59,15 @@ screens:
       all:
         - role: heading
           name: Home
-        - text: 'Account: {{role.username}}'
+        - text: "Account: {{role.username}}"
         - kind: label
-          name: 'Cart items: 0'
+          name: "Cart items: 0"
         - text: SHIWU / EVERYDAY FINDS
         - text: Simple things, made for daily use.
         - role: button
           name: Browse shop
   - id: shop
+    pageName: CatalogPage
     title: Shop
     route: /shop
     group: Shop app
@@ -125,9 +88,9 @@ screens:
       all:
         - role: heading
           name: Shop
-        - text: 'Account: {{role.username}}'
+        - text: "Account: {{role.username}}"
         - kind: label
-          name: 'Cart items: 0'
+          name: "Cart items: 0"
         - role: button
           name: View Travel cup
         - role: button
@@ -141,10 +104,11 @@ screens:
         - role: button
           name: View Knit blanket
   - id: detail
+    pageName: ProductPage
     title: Product details
     route: /products/cup
     group: Shop app
-    state: Before adding
+    state: Default
     prepare:
       - action: goto
         url: /#/shop
@@ -163,59 +127,20 @@ screens:
       all:
         - role: heading
           name: Product details
-        - text: 'Account: {{role.username}}'
+        - text: "Account: {{role.username}}"
         - kind: label
-          name: 'Cart items: 0'
+          name: "Cart items: 0"
         - role: heading
           name: Travel cup
         - text: ¥69.00
         - role: button
           name: Add to cart
-  - id: detail-added
-    title: Product details
-    route: /products/cup
-    group: Shop app
-    state: After adding
-    prepare:
-      - action: goto
-        url: /#/shop
-      - action: wait
-        ready:
-          all:
-            - role: heading
-              name: Shop
-            - role: button
-              name: View Travel cup
-      - action: click
-        target:
-          role: button
-          name: View Travel cup
-      - action: wait
-        ready:
-          all:
-            - role: heading
-              name: Travel cup
-      - action: click
-        target:
-          role: button
-          name: Add to cart
-    ready:
-      all:
-        - role: heading
-          name: Product details
-        - text: 'Account: {{role.username}}'
-        - kind: label
-          name: 'Cart items: 1'
-        - role: heading
-          name: Travel cup
-        - text: ¥69.00
-        - role: button
-          name: View cart
-  - id: cart-empty
+  - id: cart
+    pageName: CartPage
     title: Cart
     route: /cart
     group: Shop app
-    state: Empty cart
+    state: Default
     prepare:
       - action: goto
         url: /#/cart
@@ -223,57 +148,24 @@ screens:
       all:
         - role: heading
           name: Cart
-        - text: 'Account: {{role.username}}'
-        - kind: label
-          name: 'Cart items: 0'
-        - text: Your cart is empty
-        - role: button
-          name: Go shopping
-  - id: cart-full
-    title: Cart
-    route: /cart
-    group: Shop app
-    state: With items
-    prepare:
-      - action: goto
-        url: /#/shop
-      - action: wait
-        ready:
-          all:
-            - role: heading
-              name: Shop
-            - role: button
-              name: View Travel cup
-      - action: click
-        target:
-          role: button
-          name: View Travel cup
-      - action: wait
-        ready:
-          all:
-            - role: heading
-              name: Travel cup
-      - action: click
-        target:
-          role: button
-          name: Add to cart
-      - action: click
-        target:
-          role: button
-          name: View cart
-    ready:
-      all:
-        - role: heading
-          name: Cart
-        - text: 'Account: {{role.username}}'
-        - kind: label
-          name: 'Cart items: 1'
-        - role: group
-          name: 'Travel cup ¥69.00 Travel cup quantity: 1'
-        - text: Total ¥69.00
-        - role: button
-          name: Remove Travel cup
+        - text: "Account: {{role.username}}"
+        - any:
+            - all:
+                - kind: label
+                  name: "Cart items: 0"
+                - text: Your cart is empty
+                - role: button
+                  name: Go shopping
+            - all:
+                - kind: label
+                  name: "Cart items: 1"
+                - role: group
+                  name: "Travel cup ¥69.00 Travel cup quantity: 1"
+                - text: Total ¥69.00
+                - role: button
+                  name: Remove Travel cup
   - id: me
+    pageName: ProfilePage
     title: Profile
     route: /me
     group: Shop app
@@ -285,36 +177,16 @@ screens:
       all:
         - role: heading
           name: Profile
-        - text: 'Account: {{role.username}}'
+        - text: "Account: {{role.username}}"
         - kind: label
-          name: 'Cart items: 0'
+          name: "Cart items: 0"
         - role: button
           name: My cart Saved per account
-        - text: This demo runs locally with no backend. Your session and carts are saved in this browser. Signing out keeps your cart.
+        - text: This demo runs locally with no backend. Your session and carts are saved
+            in this browser. Signing out keeps your cart.
         - role: button
           name: Sign out
 edges:
-  - id: wrong-password
-    source: login
-    target: login-error
-    roles:
-      - '@anonymous'
-    action: Sign in with wrong password
-    steps:
-      - action: fill
-        target:
-          kind: label
-          name: Username
-        value: user1
-      - action: fill
-        target:
-          kind: label
-          name: Password
-        value: wrong
-      - action: click
-        target:
-          role: button
-          name: Sign in
   - id: login
     source: login
     target: home
@@ -338,44 +210,37 @@ edges:
         target:
           role: button
           name: View Travel cup
-  - id: add
+  - id: view-cart
     source: detail
-    target: detail-added
-    action: Add to cart
+    target: cart
+    action: View cart
     steps:
       - action: click
         target:
           role: button
           name: Add to cart
-  - id: view-cart
-    source: detail-added
-    target: cart-full
-    action: View cart
-    steps:
+      - action: wait
+        ready:
+          all:
+            - kind: label
+              name: "Cart items: 1"
+            - role: button
+              name: View cart
       - action: click
         target:
           role: button
           name: View cart
   - id: open-empty-cart
     source: shop
-    target: cart-empty
+    target: cart
     action: Open cart
     steps:
       - action: click
         target:
           role: button
           name: Open cart
-  - id: remove
-    source: cart-full
-    target: cart-empty
-    action: Remove Travel cup
-    steps:
-      - action: click
-        target:
-          role: button
-          name: Remove Travel cup
   - id: continue-shopping
-    source: cart-empty
+    source: cart
     target: shop
     action: Go shopping
     steps:

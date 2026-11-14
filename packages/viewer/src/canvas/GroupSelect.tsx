@@ -3,7 +3,7 @@ import {useId, useLayoutEffect, useRef, useState, type KeyboardEvent} from 'reac
 const allGroups = '全部';
 
 function groupLabel(value: string) {
-  return value === allGroups ? '全部功能' : value;
+  return value === allGroups ? 'All features' : value;
 }
 
 export function GroupSelect({
@@ -101,7 +101,7 @@ export function GroupSelect({
       <button
         type="button"
         role="combobox"
-        aria-label={`功能分组：${label}`}
+        aria-label={`Feature group: ${label}`}
         aria-controls={id}
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -115,7 +115,7 @@ export function GroupSelect({
           <path d="m2.5 4.5 3.5 3.5 3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-      <ul id={id} role="listbox" aria-label="功能分组" hidden={!open} ref={open ? list : null}>
+      <ul id={id} role="listbox" aria-label="Feature group" hidden={!open} ref={open ? list : null}>
         {options.map((option, optionIndex) => (
           <li
             key={option}

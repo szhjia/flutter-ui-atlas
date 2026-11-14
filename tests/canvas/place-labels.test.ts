@@ -1,4 +1,31 @@
-import {expect,it} from 'vitest';
+import {expect, it} from 'vitest';
 import {placeLabels} from '../../packages/viewer/src/canvas/place-labels';
 import {hasSpacingConflict} from '../../packages/viewer/src/canvas/geometry';
-it('低缩放隐藏普通标签，焦点保留，完整标签互不覆盖',()=>{const routes:any=[{id:'a',status:'routed',points:[{x:0,y:0},{x:800,y:0}]},{id:'b',status:'routed',points:[{x:0,y:0},{x:800,y:0}]}];const specs=routes.map((r:any)=>({id:r.id,size:{width:160,height:44},priority:0}));const low=placeLabels(routes,[],specs,.2,new Set(['b']));expect(low.find(l=>l.id==='a')!.mode).toBe('hidden');expect(low.find(l=>l.id==='b')!.mode).not.toBe('hidden');const full=placeLabels(routes,[],specs,.65,new Set());expect(full.every(l=>l.mode==='full')).toBe(true);const rects=full.map(l=>({x:l.center.x-80,y:l.center.y-22,width:160,height:44}));expect(hasSpacingConflict(rects[0],rects[1],{x:0,y:0})).toBe(false);});
+it('低缩放隐藏普通标签，焦点保留，完整标签互不覆盖', () => {
+  const routes: any = [
+    {
+      id: 'a',
+      status: 'routed',
+      points: [
+        {x: 0, y: 0},
+        {x: 800, y: 0}
+      ]
+    },
+    {
+      id: 'b',
+      status: 'routed',
+      points: [
+        {x: 0, y: 0},
+        {x: 800, y: 0}
+      ]
+    }
+  ];
+  const specs = routes.map((r: any) => ({id: r.id, size: {width: 160, height: 44}, priority: 0}));
+  const low = placeLabels(routes, [], specs, 0.2, new Set(['b']));
+  expect(low.find(l => l.id === 'a')!.mode).toBe('hidden');
+  expect(low.find(l => l.id === 'b')!.mode).not.toBe('hidden');
+  const full = placeLabels(routes, [], specs, 0.65, new Set());
+  expect(full.every(l => l.mode === 'full')).toBe(true);
+  const rects = full.map(l => ({x: l.center.x - 80, y: l.center.y - 22, width: 160, height: 44}));
+  expect(hasSpacingConflict(rects[0], rects[1], {x: 0, y: 0})).toBe(false);
+});

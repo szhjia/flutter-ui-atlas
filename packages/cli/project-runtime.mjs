@@ -41,7 +41,7 @@ export function createProjectAdapter({snapshot, profile}) {
     }
   };
   const authenticate = async (page, role) => {
-    const auth = await createAuthenticationAdapter({directory, project});
+    const auth = await createAuthenticationAdapter({directory, project, scope: snapshot});
     await auth.login({page, role, credentials: role.credentials, baseUrl: project.baseUrl});
     const result = await auth.verify({page, role});
     if (!result?.authenticated || result.identityMatches === false) throw Error('真实登录未通过');

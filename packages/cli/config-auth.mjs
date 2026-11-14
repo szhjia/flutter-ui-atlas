@@ -1,4 +1,13 @@
-import {readFile} from 'node:fs/promises';
+import {fingerprintModule} from './build-input.mjs';
+const loadedAuthenticationFiles = new Map();
+const loadedAuthenticationResolutions = new Map();
+const authenticationScopes = new WeakMap();
+let untrackedAuthenticationScope;
+function scopeIdentity(scope) {
+  if (!authenticationScopes.has(scope)) authenticationScopes.set(scope, Symbol('authentication operation'));
+  return authenticationScopes.get(scope);
+}
+import {readFile, realpath} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {ConfigError, digest, projectValue} from './config-values.mjs';
@@ -51,16 +60,51 @@ function formAdapter(auth) {
   };
 }
 
-export async function createAuthenticationAdapter({directory, project}) {
+export async function createAuthenticationAdapter({directory, project, scope = {}}) {
   const auth = projectValue(project).authentication;
   if (auth.type === 'none') throw new ConfigError('请先配置登录方式。');
   let adapter;
   if (auth.type === 'form') adapter = formAdapter(auth);
   else {
-    const file = resolve(directory, auth.module);
+    const requestedFile = resolve(await realpath(directory), auth.module);
+    const file = await realpath(requestedFile);
     const source = await readFile(file, 'utf8');
+    const graph = await fingerprintModule(requestedFile);
+    const operation = scopeIdentity(scope);
+    for (const resolution of graph.resolutions) {
+      const loaded = loadedAuthenticationResolutions.get(resolution.request);
+      if (loaded && loaded !== resolution.target)
+        throw new ConfigError(
+          'Authentication dependency resolution changed. Restart the Atlas service before testing again.',
+          409
+        );
+    }
+    // Unknown loaders can populate Node's process-wide cache outside the visible graph.
+    if (
+      (untrackedAuthenticationScope && untrackedAuthenticationScope !== operation) ||
+      (!graph.complete && [...loadedAuthenticationFiles.values()].some(item => item.scope !== operation))
+    )
+      throw new ConfigError(
+        'Authentication dependencies cannot be verified across operations. Restart the Atlas service before testing again, or use fully tracked .mjs dependencies.',
+        409
+      );
+    for (const dependency of graph.files) {
+      const loaded = loadedAuthenticationFiles.get(dependency.path);
+      if (loaded && loaded.digest !== dependency.digest)
+        throw new ConfigError(
+          'Authentication dependencies changed. Restart the Atlas service before opening a live session.',
+          409
+        );
+    }
     if (digest(source) !== project.authenticationRevision)
       throw new ConfigError('认证模块已更改，请重新加载配置后测试。', 409);
+    // Reserve the module before import so concurrent operations cannot share an incomplete graph.
+    if (!graph.complete) untrackedAuthenticationScope = operation;
+    for (const resolution of graph.resolutions)
+      loadedAuthenticationResolutions.set(resolution.request, resolution.target);
+    for (const dependency of graph.files)
+      if (!loadedAuthenticationFiles.has(dependency.path))
+        loadedAuthenticationFiles.set(dependency.path, {digest: dependency.digest, scope: operation});
     adapter = (await import(`${pathToFileURL(file).href}?atlas=${digest(source)}`)).default;
     if (
       !adapter ||

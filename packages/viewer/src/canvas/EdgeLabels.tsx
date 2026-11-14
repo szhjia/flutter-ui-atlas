@@ -1,4 +1,4 @@
-import {useMemo} from 'react';
+import {memo, useMemo} from 'react';
 import {EdgeLabelRenderer, useViewport} from '@xyflow/react';
 import {placeLabels} from './place-labels';
 import type {CanvasNode, RoutedEdge} from './types';
@@ -36,23 +36,62 @@ export function EdgeLabels({
           const edge = edges.find(e => e.id === l.id)!,
             size = specs.find(s => s.id === l.id)!.size;
           return (
-            <button
+            <Label
               key={l.id}
-              data-edge-label={l.id}
-              className={`atlas-edge-label nodrag nopan ${focusedIds.has(l.id) ? 'is-focused' : ''}`}
-              title={edge.action}
-              aria-label={`关系：${edge.action}`}
-              style={{
-                width: l.mode === 'count' ? 26 : size.width * zoom,
-                height: l.mode === 'count' ? 26 : size.height * zoom,
-                transform: `translate(-50%, -50%) translate(${l.center.x}px, ${l.center.y}px) scale(${1 / zoom})`
-              }}
-              onClick={() => onChoose(l.id)}
-            >
-              <span>{l.mode === 'count' ? '⋯' : edge.action}</span>
-            </button>
+              id={l.id}
+              action={edge.action}
+              focused={focusedIds.has(l.id)}
+              mode={l.mode}
+              width={size.width * zoom}
+              height={size.height * zoom}
+              x={l.center.x}
+              y={l.center.y}
+              zoom={zoom}
+              onChoose={onChoose}
+            />
           );
         })}
     </EdgeLabelRenderer>
   );
 }
+
+const Label = memo(function Label({
+  id,
+  action,
+  focused,
+  mode,
+  width,
+  height,
+  x,
+  y,
+  zoom,
+  onChoose
+}: {
+  id: string;
+  action: string;
+  focused: boolean;
+  mode: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  zoom: number;
+  onChoose: (id: string) => void;
+}) {
+  return (
+    <button
+      data-edge-label={id}
+      className={`atlas-edge-label nodrag nopan ${focused ? 'is-focused' : ''}`}
+      title={action}
+      aria-label={`Transition: ${action}`}
+      style={{
+        width: mode === 'count' ? 26 : width,
+        height: mode === 'count' ? 26 : height,
+        transform: `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${1 / zoom})`
+      }}
+      onClick={() => onChoose(id)}
+    >
+      <span>{mode === 'count' ? '⋯' : action}</span>
+    </button>
+  );
+});

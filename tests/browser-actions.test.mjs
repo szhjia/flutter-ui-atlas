@@ -40,6 +40,22 @@ test('共享执行器顺序操作、all内容与路由判据、失败正文和�
   const ready = {all: [{route: '/done'}, {role: 'heading', name: 'user1'}]};
   await module.waitReady(page, ready, {baseUrl, timeoutMs: 500});
   assert.equal(await module.matchesReady(page, ready, {baseUrl}), true);
+  const alternatives = {
+    any: [
+      {all: [{route: '/done'}, {text: 'Missing body content'}]},
+      {all: [{route: '/done'}, {role: 'heading', name: 'user1'}]}
+    ]
+  };
+  module.validateCondition(alternatives);
+  assert.equal(await module.matchesReady(page, alternatives, {baseUrl}), true);
+  assert.equal(
+    await module.matchesReady(
+      page,
+      {any: [alternatives.any[0], {all: [{text: 'Wrong total'}, {role: 'heading', name: 'user1'}]}]},
+      {baseUrl}
+    ),
+    false
+  );
   assert.equal(await module.matchesReady(page, {not: {role: 'heading', name: 'user1'}}, {baseUrl}), false);
   assert.equal(await module.matchesReady(page, {not: {text: '不存在正文'}}, {baseUrl}), true);
   await assert.rejects(

@@ -9,7 +9,7 @@ afterEach(() => {
 it('非法 JSON 返回错误通道，不抛异常', () => {
   const result = parseEntryConfig('{bad json');
   expect(result.config).toBe(null);
-  expect(result.error).toContain('画布配置解析失败');
+  expect(result.error).toContain('Could not parse canvas configuration');
   expect(result.error).toContain('#atlas-config');
 });
 
@@ -40,13 +40,13 @@ it('非对象 JSON（数组/数字/字符串）按非法处理', () => {
   expect(parseEntryConfig('"text"').config).toBe(null);
 });
 
-it('入口渲染：非法配置显示中文错误提示，不白屏', async () => {
+it('入口渲染：非法配置显示英文错误提示，不白屏', async () => {
   document.body.innerHTML = '<script type="application/json" id="atlas-config">{bad</script><div id="root"></div>';
   await import('../../src/main');
   await waitFor(() => {
     const alert = document.querySelector('#root [role="alert"]');
-    expect(alert?.textContent).toContain('画布配置解析失败');
+    expect(alert?.textContent).toContain('Could not parse canvas configuration');
     expect(alert?.textContent).toContain('#atlas-config');
-    expect(document.querySelector('#root')?.textContent).toContain('重新加载');
+    expect(document.querySelector('#root')?.textContent).toContain('Reload');
   });
 });

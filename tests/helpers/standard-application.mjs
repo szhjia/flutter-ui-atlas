@@ -6,7 +6,7 @@ import {configFixture, configure, draft} from './config-fixtures.mjs';
 
 /** 普通 HTML 测试应用，只验证通用工具协议，不作为 Flutter Demo 验收。 */
 export async function standardApplication() {
-  const controls = {missing: false, failWidthBelow: 0, onAuthenticated: null};
+  const controls = {missing: false, failWidthBelow: 0, onAuthenticated: null, redirectSignedOut: false};
   const requests = [];
   const server = createServer(async (request, response) => {
     try {
@@ -25,6 +25,10 @@ export async function standardApplication() {
       }
       const tag = /standard-account=(reader|admin)/.exec(request.headers.cookie ?? '')?.[1];
       if (!tag) {
+        if (controls.redirectSignedOut && request.url !== '/login') {
+          response.writeHead(302, {Location: '/login'}).end();
+          return;
+        }
         response.end(
           `<form method="post" action="/login"><label>登录账号<input name="username"></label><label>登录密码<input name="password" type="password"></label><button>登录</button></form>${request.url.includes('failed') ? '<p>账号或密码错误</p>' : ''}`
         );
@@ -33,13 +37,17 @@ export async function standardApplication() {
       requests.push({tag, url: request.url});
       await controls.onAuthenticated?.();
       response.end(`<h1>登录成功</h1><p id="identity">${tag} 身份</p><section id="content"></section><script>
-        let detail=false,count=0;
+        let count=0;
         function render(){
+          const currentRoute=decodeURIComponent(location.hash.slice(1));
+          const listRoute=currentRoute.includes('商品')?'/商品 列表':'/list';
+          const detailRoute=currentRoute.includes('商品')?'/商品 详情':'/detail';
+          const detail=currentRoute.includes('detail')||currentRoute.includes('详情');
           const ready=!${JSON.stringify(controls.missing)}&&innerWidth>=${controls.failWidthBelow};
           document.querySelector('#content').innerHTML=ready?'<h2>${tag} 正文'+(detail?'详情':'列表')+'</h2><button id="change">'+(detail?'返回列表':'进入详情')+'</button><button id="counter">计数 '+count+'</button>':'<p>正文未就绪</p>';
-          document.querySelector('#change')?.addEventListener('click',()=>{detail=!detail;render()});
+          document.querySelector('#change')?.addEventListener('click',()=>{location.hash=detail?listRoute:detailRoute;});
           document.querySelector('#counter')?.addEventListener('click',()=>{count++;render()});
-        }render();</script>`);
+        }window.addEventListener('hashchange',render);render();</script>`);
     } catch {
       response.writeHead(500).end('测试应用处理失败');
     }
@@ -84,16 +92,16 @@ export async function standardFixture({roles = ['reader'], profiles} = {}) {
         {
           id: 'list',
           title: '列表',
-          route: '/shared',
+          route: '/list',
           state: '列表',
           ready: {kind: 'role', role: 'heading', name: '{{role.tag}} 正文列表'}
         },
         {
           id: 'detail',
           title: '详情',
-          route: '/shared',
+          route: '/detail',
           state: '详情',
-          prepare: [{click: {kind: 'role', role: 'button', name: '进入详情'}}],
+          prepare: [],
           ready: {kind: 'role', role: 'heading', name: '{{role.tag}} 正文详情'}
         }
       ],

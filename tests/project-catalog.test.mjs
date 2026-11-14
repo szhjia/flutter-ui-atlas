@@ -37,11 +37,13 @@ test('目录按启用账户展开，匿名共享，页面身份由稳定UUID保�
   assert.deepEqual(
     catalog?.screens.map(s => [s.id, s.role]),
     [
-      ['@anonymous:login', '未登录'],
+      ['@anonymous:login', 'Signed out'],
       ['stable-one:home', '用户一']
     ]
   );
   assert.equal(catalog.screens[1].ready.all[1].name, '账户 one');
+  assert.equal(catalog.screens[0].group, 'Screens');
+  assert.equal(catalog.screens[1].title, '首页');
   assert.deepEqual(
     catalog.edges.map(e => [e.source, e.target]),
     [['stable-one:home', '@anonymous:login']]

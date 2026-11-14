@@ -4,6 +4,7 @@ import {resolve} from 'node:path';
 import {createInterface} from 'node:readline/promises';
 import {createBatch, errorMessage, publishBatch, validateCatalog} from './index.mjs';
 import {acquireOutputLock} from './lock.mjs';
+import {routeIdentity} from './route-identity.mjs';
 
 const sameViewport = (a, b) => a?.width === b.width && a?.height === b.height;
 const delay = ms => new Promise(done => setTimeout(done, ms));
@@ -30,27 +31,41 @@ function installActivationListener() {
   const roles = '[role="button"],[role="link"],[role="tab"],button,a[href]';
   const label = element => {
     const refs = element.getAttribute('aria-labelledby')?.trim().split(/\s+/) ?? [];
-    const referenced = refs.map(id => element.getRootNode().getElementById(id)?.textContent).filter(Boolean).join(' ');
+    const referenced = refs
+      .map(id => element.getRootNode().getElementById(id)?.textContent)
+      .filter(Boolean)
+      .join(' ');
     // Flutter 的 flt-semantics 按钮也可能直接用文本节点提供名称。
     return (referenced || element.getAttribute('aria-label') || element.textContent).replace(/\s+/g, ' ').trim();
   };
-  document.addEventListener('click', event => {
-    if (!event.isTrusted) return;
-    const target = event.composedPath().find(node => node instanceof Element && node.matches(roles));
-    let name = target && label(target);
-    if (!name && event.detail > 0) {
-      const names = new Set();
-      for (const element of document.querySelectorAll(roles)) {
-        if (element.matches(':disabled,[aria-disabled="true"]') || element.closest('[aria-hidden="true"],[inert]')) continue;
-        const rect = element.getBoundingClientRect();
-        if (event.clientX >= rect.left && event.clientX < rect.right &&
-            event.clientY >= rect.top && event.clientY < rect.bottom && label(element)) names.add(label(element));
+  document.addEventListener(
+    'click',
+    event => {
+      if (!event.isTrusted) return;
+      const target = event.composedPath().find(node => node instanceof Element && node.matches(roles));
+      let name = target && label(target);
+      if (!name && event.detail > 0) {
+        const names = new Set();
+        for (const element of document.querySelectorAll(roles)) {
+          if (element.matches(':disabled,[aria-disabled="true"]') || element.closest('[aria-hidden="true"],[inert]'))
+            continue;
+          const rect = element.getBoundingClientRect();
+          if (
+            event.clientX >= rect.left &&
+            event.clientX < rect.right &&
+            event.clientY >= rect.top &&
+            event.clientY < rect.bottom &&
+            label(element)
+          )
+            names.add(label(element));
+        }
+        if (names.size === 1) name = [...names][0];
       }
-      if (names.size === 1) name = [...names][0];
-    }
-    // 密码、文本输入框和应用页面之外的交互不进入动作记录。
-    window.__atlasActivation(typeof name === 'string' ? name.trim().slice(0, 120) : '', location.href);
-  }, true);
+      // 密码、文本输入框和应用页面之外的交互不进入动作记录。
+      window.__atlasActivation(typeof name === 'string' ? name.trim().slice(0, 120) : '', location.href);
+    },
+    true
+  );
 }
 
 async function waitForEnter() {
@@ -73,7 +88,12 @@ async function manualJourney(session, watch, waitForStop) {
   let failure;
   let revision = 0;
   const track = (operation, active) => {
-    task = Promise.all([task, operation.catch(error => { failure = error; })]).then(() => {
+    task = Promise.all([
+      task,
+      operation.catch(error => {
+        failure = error;
+      })
+    ]).then(() => {
       if (active === revision) recording = false;
     });
   };
@@ -82,7 +102,10 @@ async function manualJourney(session, watch, waitForStop) {
     const overlap = recording;
     const active = ++revision;
     recording = true;
-    track(observer.afterActivation(overlap ? '' : action, url, () => active === revision), active);
+    track(
+      observer.afterActivation(overlap ? '' : action, url, () => active === revision),
+      active
+    );
   });
   await session.page.context().addInitScript(installActivationListener);
   await session.page.evaluate(installActivationListener);
@@ -90,7 +113,14 @@ async function manualJourney(session, watch, waitForStop) {
     if (recording || refreshing || stopping || failure) return;
     refreshing = true;
     const active = revision;
-    track(observer.refresh(() => active === revision).finally(() => { refreshing = false; }), active);
+    track(
+      observer
+        .refresh(() => active === revision)
+        .finally(() => {
+          refreshing = false;
+        }),
+      active
+    );
   }, 500);
   try {
     await waitForStop(session);
@@ -106,7 +136,15 @@ async function manualJourney(session, watch, waitForStop) {
  * @param {{discovery: any, launchBrowser: any, output: string, publicPath?: string,
  *   viewport: any, mode?: string, waitForStop?: (session: any) => Promise<void>}} options
  */
-export async function runDiscovery({discovery, launchBrowser, output, publicPath, viewport, mode, waitForStop = waitForEnter}) {
+export async function runDiscovery({
+  discovery,
+  launchBrowser,
+  output,
+  publicPath,
+  viewport,
+  mode,
+  waitForStop = waitForEnter
+}) {
   const release = await acquireOutputLock(output);
   try {
     return await runBatch({discovery, launchBrowser, output, publicPath, viewport, mode, waitForStop});
@@ -129,7 +167,7 @@ export function finalizeArchive({result, nodes, edges, failed}) {
       : screens.filter(screen => screen?.status === 'failed').length,
     failedEdges: failed
       ? archivedEdges.filter(edge => edge?.status !== 'observed').length
-      : archivedEdges.filter(edge => edge?.status === 'failed').length,
+      : archivedEdges.filter(edge => edge?.status === 'failed').length
   };
 }
 
@@ -144,9 +182,14 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
   const edges = new Map();
   try {
     const {sourceFingerprint, candidates, open, journeys} = discovery;
-    const metadata = {theme: '默认主题', scenarioId: 'default', seedVersion: '1',
-      scope: '路由候选与已观察的浏览器流程', ...discovery.metadata};
-    const fingerprint = await sourceFingerprint?.() ?? '';
+    const metadata = {
+      theme: 'Default theme',
+      scenarioId: 'default',
+      seedVersion: '1',
+      scope: 'Route candidates and observed browser flows',
+      ...discovery.metadata
+    };
+    const fingerprint = (await sourceFingerprint?.()) ?? '';
     const declared = await candidates();
     if (!Array.isArray(declared)) throw Error('路由候选必须是数组');
     if (mode === 'capture' || declared.length) validateCatalog({screens: declared, edges: []});
@@ -154,24 +197,79 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
       if (error.code !== 'ENOENT') throw error;
       return null;
     });
-    const compatible = Boolean(fingerprint && previous?.discovery && previous.sourceFingerprint === fingerprint &&
-      sameViewport(previous.viewport, viewport) && previous.scenarioId === metadata?.scenarioId &&
-      previous.seedVersion === metadata?.seedVersion && previous.theme === metadata?.theme);
+    const diagnostics = [];
+    let compatible = Boolean(
+      fingerprint &&
+      previous?.schemaVersion === 1 &&
+      previous?.discovery &&
+      previous.sourceFingerprint === fingerprint &&
+      sameViewport(previous.viewport, viewport) &&
+      previous.scenarioId === metadata?.scenarioId &&
+      previous.seedVersion === metadata?.seedVersion &&
+      previous.theme === metadata?.theme
+    );
+    if (compatible) {
+      try {
+        validateCatalog(previous);
+        const previousIds = new Map(previous.screens.map(screen => [routeIdentity(screen), screen.id]));
+        if (
+          declared.some(
+            screen => previousIds.has(routeIdentity(screen)) && previousIds.get(routeIdentity(screen)) !== screen.id
+          )
+        ) {
+          throw Error('Route declarations changed their page IDs');
+        }
+      } catch {
+        compatible = false;
+        diagnostics.push('Previous capture contains duplicate or invalid routes; recording a fresh route map.');
+      }
+    }
     if (compatible) {
       for (const screen of previous.screens) nodes.set(screen.id, screen);
       for (const edge of previous.edges) edges.set(edge.id, edge);
     }
-    const diagnostics = [];
     for (const {direct, ...screen} of declared) {
       if (!nodes.has(screen.id)) nodes.set(screen.id, {...screen, status: 'pending', error: '等待真实页面就绪'});
     }
+    const routeIds = new Map([...nodes.values()].map(screen => [routeIdentity(screen), screen.id]));
+    const sessions = new WeakMap();
+    const routeSession = session => {
+      if (sessions.has(session)) return sessions.get(session);
+      const wrapper = {
+        ...session,
+        observe: async () => {
+          const screen = await session.observe();
+          if (!screen) return null;
+          const key = routeIdentity(screen);
+          const existing = nodes.get(screen.id);
+          if (existing && routeIdentity(existing) !== key)
+            throw Error('A discovered page ID was reused for a different account or route.');
+          const id = routeIds.get(key) ?? screen.id;
+          routeIds.set(key, id);
+          return {...screen, id};
+        }
+      };
+      sessions.set(session, wrapper);
+      sessions.set(wrapper, wrapper);
+      return wrapper;
+    };
     result = {
       ...metadata,
-      schemaVersion: 1, discovery: true, captureId, capturedAt: new Date().toISOString(),
-      sourceFingerprint: fingerprint, viewport, screens: [], edges: [], runtimeErrors: [], diagnostics,
+      schemaVersion: 1,
+      discovery: true,
+      captureId,
+      capturedAt: new Date().toISOString(),
+      sourceFingerprint: fingerprint,
+      viewport,
+      screens: [],
+      edges: [],
+      runtimeErrors: [],
+      diagnostics
     };
     let imageNumber = 0;
-    const note = message => { if (diagnostics.length < 200) diagnostics.push(message); };
+    const note = message => {
+      if (diagnostics.length < 200) diagnostics.push(message);
+    };
     async function save(session, screen, replace = false) {
       if (!screen || (!replace && nodes.get(screen.id)?.status === 'captured')) return Boolean(screen);
       validateCatalog({screens: [screen], edges: []});
@@ -183,28 +281,34 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
         return false;
       }
       const {error, status, ...fields} = {...nodes.get(screen.id), ...screen};
-      nodes.set(screen.id, {...fields, status: 'captured', actualRoute: screen.route,
-        image: artifact(name), capturedAt: new Date().toISOString()});
+      nodes.set(screen.id, {
+        ...fields,
+        status: 'captured',
+        actualRoute: screen.route,
+        image: artifact(name),
+        capturedAt: new Date().toISOString()
+      });
       return true;
     }
     async function watch(session) {
+      session = routeSession(session);
       let current = await stableScreen(session);
-      if (current && !await save(session, current)) current = null;
+      if (current && !(await save(session, current))) current = null;
       let currentUrl = session.page.url();
       const refresh = async (active = () => true) => {
         if (session.page.isClosed()) return;
         const next = await session.observe();
-        if (!active() || next?.id === current?.id && session.page.url() === currentUrl) return;
+        if (!active() || (next?.id === current?.id && session.page.url() === currentUrl)) return;
         const screen = await stableScreen(session);
         if (!active()) return;
-        current = screen && await save(session, screen) ? screen : null;
+        current = screen && (await save(session, screen)) ? screen : null;
         currentUrl = session.page.url();
       };
       const transition = async (source, action, origin, active = () => true) => {
         if (!source || session.page.isClosed()) return;
         const target = await stableScreen(session, {differentFrom: source.id, quiet: 450, timeout: 2500});
         if (!active()) return;
-        if (!target || !await save(session, target)) {
+        if (!target || !(await save(session, target))) {
           note('操作后没有可确认的新页面');
           return;
         }
@@ -215,30 +319,43 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
           note('已观察到页面变化，触发动作未知');
           return;
         }
-        const id = 'recorded:' + createHash('sha256').update(JSON.stringify([source.id, target.id, action])).digest('hex').slice(0, 24);
+        const id =
+          'recorded:' +
+          createHash('sha256')
+            .update(JSON.stringify([source.id, target.id, action]))
+            .digest('hex')
+            .slice(0, 24);
         const sources = [...new Set([...(edges.get(id)?.recordingSources ?? []), origin])].sort();
-        edges.set(id, {id, source: source.id, target: target.id, action, sourceFile: '', status: 'observed', recordingSources: sources});
+        edges.set(id, {
+          id,
+          source: source.id,
+          target: target.id,
+          action,
+          sourceFile: '',
+          status: 'observed',
+          recordingSources: sources
+        });
       };
       return {
         refresh,
-        afterActivation: (action, url, active) => currentUrl === url
-          ? transition(current, action, 'manual', active) : refresh(active),
+        afterActivation: (action, url, active) =>
+          currentUrl === url ? transition(current, action, 'manual', active) : refresh(active),
         async step(action, perform) {
           const source = await session.observe();
-          const confirmed = source && await save(session, source) ? source : null;
+          const confirmed = source && (await save(session, source)) ? source : null;
           await perform();
           await transition(confirmed, action, 'test');
-        },
+        }
       };
     }
     browser = await launchBrowser();
     if (mode === 'capture') {
       for (const {direct, ...candidate} of declared) {
         if (!direct) continue;
-        const session = await open({browser, viewport, candidate});
+        const session = routeSession(await open({browser, viewport, candidate}));
         try {
           const screen = await stableScreen(session, {timeout: 1600});
-          if (screen?.id !== candidate.id || !await save(session, screen, true)) {
+          if (screen?.id !== candidate.id || !(await save(session, screen, true))) {
             nodes.set(candidate.id, {...candidate, status: 'pending', error: '实际入口、路由、身份或内容与候选不符'});
           }
         } finally {
@@ -262,22 +379,29 @@ async function runBatch({discovery, launchBrowser, output, publicPath, viewport,
       if (session.errors?.length) result.runtimeErrors.push(...session.errors);
     }
     if (result.runtimeErrors.length) throw Error('浏览器运行异常，未发布本批图谱');
-    if (fingerprint !== (await sourceFingerprint?.() ?? '')) throw Error('采集期间源码变化，拒绝发布混合版本');
+    if (fingerprint !== ((await sourceFingerprint?.()) ?? '')) throw Error('采集期间源码变化，拒绝发布混合版本');
     result.screens = [...nodes.values()];
-    result.edges = [...edges.values()].filter(edge =>
-      nodes.get(edge.source)?.status === 'captured' && nodes.get(edge.target)?.status === 'captured');
+    result.edges = [...edges.values()].filter(
+      edge => nodes.get(edge.source)?.status === 'captured' && nodes.get(edge.target)?.status === 'captured'
+    );
     validateCatalog(result);
   } catch (error) {
     failure = error;
   } finally {
-    await browser?.close().catch(error => { failure ??= error; });
+    await browser?.close().catch(error => {
+      failure ??= error;
+    });
   }
   const archive = finalizeArchive({result, nodes, edges, failed: Boolean(failure)});
   const attempt = {
-    captureId, completedAt: new Date().toISOString(), status: failure ? 'failed' : 'passed',
-    failedScreens: archive.failedScreens, failedEdges: archive.failedEdges,
+    captureId,
+    completedAt: new Date().toISOString(),
+    status: failure ? 'failed' : 'passed',
+    failedScreens: archive.failedScreens,
+    failedEdges: archive.failedEdges,
     stage: failure ? mode : 'complete',
-    error: failure ? errorMessage(failure) : null, report: artifact('attempt.json'),
+    error: failure ? errorMessage(failure) : null,
+    report: artifact('attempt.json')
   };
   await publishBatch({output, directory, captureId, result: archive.result, attempt});
   if (failure) throw failure;

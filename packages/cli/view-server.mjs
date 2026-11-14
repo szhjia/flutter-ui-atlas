@@ -1,3 +1,4 @@
+import {readWorkspaceManifest} from './workspace-build.mjs';
 import {readFile, realpath} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
@@ -24,7 +25,17 @@ async function readWithin(directory, path) {
   return readFile(file);
 }
 
-export async function serveViewer({config, port, output, publicPath, sourceFingerprint, liveSessions}) {
+export async function serveViewer({
+  config,
+  port,
+  output,
+  publicPath,
+  sourceFingerprint,
+  liveSessions,
+  workspaceOutput = output,
+  profileName = null,
+  workspaceStatus
+}) {
   const token = liveSessions ? randomBytes(32).toString('base64url') : undefined;
   if (liveSessions) config = {...config, managedLive: {endpoint: '/__atlas/live', token}};
   let actualPort = port;
@@ -69,6 +80,25 @@ export async function serveViewer({config, port, output, publicPath, sourceFinge
         send(html, mediaTypes.html);
         return;
       }
+      if (pathname === '/__atlas/workspaces' && workspaceStatus) {
+        const bundle = await readWorkspaceManifest(workspaceOutput, profileName);
+        if (!bundle) {
+          response.writeHead(404).end();
+          return;
+        }
+        const current = await workspaceStatus(bundle);
+        send(
+          JSON.stringify({
+            workspaces: current.workspaces.map(w => ({
+              id: w.id,
+              revisionId: w.map.revisionId,
+              configurationChanged: w.map.configurationChanged
+            }))
+          }),
+          mediaTypes.json
+        );
+        return;
+      }
       if (pathname === '/__atlas/source' && sourceFingerprint) {
         try {
           send(JSON.stringify({fingerprint: await sourceFingerprint()}), mediaTypes.json);
@@ -78,11 +108,28 @@ export async function serveViewer({config, port, output, publicPath, sourceFinge
         return;
       }
       const artifact = pathname.startsWith(publicPath + '/') ? pathname.slice(publicPath.length) : '';
-      const data = allowedArtifact.test(artifact)
-        ? await readWithin(output, artifact.slice(1))
-        : /^\/assets\/[\w.-]+$/.test(pathname)
-          ? await readWithin(distribution, pathname.slice(1))
-          : null;
+      if (artifact === '/latest-attempt.json' && workspaceOutput !== output) {
+        try {
+          send(await readWithin(workspaceOutput, 'latest-attempt.json'), mediaTypes.json);
+          return;
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+      }
+      if (artifact === '/manifest.json') {
+        const map = await readWorkspaceManifest(workspaceOutput, profileName);
+        if (map) {
+          send(JSON.stringify(workspaceStatus ? await workspaceStatus(map) : map), mediaTypes.json);
+          return;
+        }
+      }
+      const data = /^\/captures\/[0-9TZ-]+\/[0-9]+\.png$/.test(artifact)
+        ? await readWithin(workspaceOutput, artifact.slice(1))
+        : allowedArtifact.test(artifact)
+          ? await readWithin(output, artifact.slice(1))
+          : /^\/assets\/[\w.-]+$/.test(pathname)
+            ? await readWithin(distribution, pathname.slice(1))
+            : null;
       if (!data) {
         response.writeHead(404).end();
         return;

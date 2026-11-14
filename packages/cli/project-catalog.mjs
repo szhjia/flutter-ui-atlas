@@ -1,8 +1,9 @@
 import {validateCondition, validateSteps} from './browser-actions.mjs';
 import {webUrl, validateRoutePrefix} from '../capture/declarative.mjs';
 import {assertLoopback} from '../capture/web-boundary.mjs';
+import {assertUniqueRoutes} from '../capture/route-identity.mjs';
 
-const anonymous = {id: '@anonymous', name: '未登录', tag: '@anonymous'};
+const anonymous = {id: '@anonymous', name: 'Signed out', tag: '@anonymous'};
 export function interpolate(value, role) {
   if (typeof value === 'string')
     return value.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
@@ -72,8 +73,9 @@ export function expandCatalog(config, roles = []) {
       return {
         ...value,
         id: `${role.id}:${spec.id}`,
+        accountId: role.id,
         role: role.name,
-        group: value.group ?? '页面',
+        group: value.group ?? 'Screens',
         state: value.state ?? value.title,
         route: mode === 'pathname' ? entry.pathname : entry.hash.slice(1).split('?')[0] || '/',
         entry: entry.href,
@@ -83,6 +85,7 @@ export function expandCatalog(config, roles = []) {
     });
   });
   if (!screens.length) throw Error('没有启用账户对应的页面，目录不能为空');
+  assertUniqueRoutes(screens);
   const edges = (config.edges ?? []).flatMap(spec => {
     if (!ids.has(spec.source) || !ids.has(spec.target)) throw Error('连线引用了未知页面');
     return screens
@@ -95,6 +98,8 @@ export function expandCatalog(config, roles = []) {
               (s._role.id === from._role.id || s._role === anonymous || from._role === anonymous)
           )
           .map(to => {
+            if (from.id === to.id)
+              throw Error('A navigation edge cannot target the same page. In-page changes are not navigation.');
             const role = from._role === anonymous ? to._role : from._role;
             const value = interpolate(spec, role);
             validateSteps(value.steps ?? (value.click ? [{click: value.click}] : undefined), base.href);

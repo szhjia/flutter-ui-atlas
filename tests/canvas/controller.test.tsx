@@ -96,7 +96,7 @@ it('损坏布局给出恢复出口：丢弃后自动整理并恢复保存', () =
     useCanvasController({map, layoutKey: 'broken', visibleIds: new Set(['a', 'b', 'c'])})
   );
   expect(result.current.corrupted).toBe(true);
-  expect(result.current.issue).toContain('丢弃');
+  expect(result.current.issue).toContain('Discard');
   expect(localStorage.getItem(storageKey('broken'))).toBe('{bad');
   act(() => result.current.discardCorruptedLayout());
   expect(result.current.corrupted).toBe(false);
@@ -120,7 +120,7 @@ it('另一窗口修复存储后点丢弃：不删好数据，转回外部布局�
   act(() => result.current.discardCorruptedLayout());
   expect(result.current.corrupted).toBe(false);
   expect(JSON.parse(localStorage.getItem(storageKey('broken'))!).nodes.a.x).toBe(10);
-  expect(result.current.issue).toContain('已可读');
+  expect(result.current.issue).toContain('readable again');
   expect(result.current.externalAvailable).toBe(true);
 });
 
@@ -135,7 +135,7 @@ it('丢弃后保存失败必须保留诊断，不能宣称布局已保存', () =
   act(() => result.current.discardCorruptedLayout());
   expect(result.current.corrupted).toBe(false);
   expect(localStorage.getItem(storageKey('broken'))).toBeNull();
-  expect(result.current.issue).toContain('布局未保存');
+  expect(result.current.issue).toContain('Layout not saved');
 });
 
 it('载入外部损坏布局同步恢复入口状态，丢弃后重新保存', () => {
@@ -146,7 +146,7 @@ it('载入外部损坏布局同步恢复入口状态，丢弃后重新保存', (
   act(() => window.dispatchEvent(new StorageEvent('storage', {key: storageKey('test')})));
   act(() => result.current.loadExternalLayout());
   expect(result.current.corrupted).toBe(true);
-  expect(result.current.issue).toContain('可丢弃');
+  expect(result.current.issue).toContain('Discard');
   expect(localStorage.getItem(storageKey('test'))).toBe('{bad');
   act(() => result.current.discardCorruptedLayout());
   expect(result.current.corrupted).toBe(false);
@@ -162,6 +162,24 @@ it('保留当前布局也会识别外部损坏，不覆盖原数据并提供恢�
   act(() => window.dispatchEvent(new StorageEvent('storage', {key: storageKey('test')})));
   act(() => result.current.keepLocalLayout());
   expect(result.current.corrupted).toBe(true);
-  expect(result.current.issue).toContain('丢弃');
+  expect(result.current.issue).toContain('Discard');
   expect(localStorage.getItem(storageKey('test'))).toBe('{bad');
+});
+
+it('returning to an account restores its undo stack without sharing another workspace history', () => {
+  const first = renderHook(() => useCanvasController({map, layoutKey: 'test', visibleIds: new Set(['a', 'b', 'c'])}));
+  act(() => first.result.current.moveByKeyboard('a', {x: 10, y: 0}));
+  expect(first.result.current.canUndo).toBe(true);
+  first.unmount();
+  const other = renderHook(() =>
+    useCanvasController({map, layoutKey: 'other-account', visibleIds: new Set(['a', 'b', 'c'])})
+  );
+  expect(other.result.current.canUndo).toBe(false);
+  other.unmount();
+  const returned = renderHook(() =>
+    useCanvasController({map, layoutKey: 'test', visibleIds: new Set(['a', 'b', 'c'])})
+  );
+  expect(returned.result.current.canUndo).toBe(true);
+  act(() => returned.result.current.undo());
+  expect(returned.result.current.nodes.find(n => n.id === 'a')?.x).toBe(0);
 });

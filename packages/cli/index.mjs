@@ -1,3 +1,5 @@
+import {annotateWorkspaceFreshness, withApplicationWriter, publishLegacyWorkspaces} from './workspace-build.mjs';
+import {diagnose} from './doctor.mjs';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
@@ -21,9 +23,10 @@ const usage = `用法：
   atlas init [--name <工程名>] [--url <Flutter Web 地址>] [--port <画布端口>] [--ready-text <就绪文字>] [--yes]
   atlas init --adapter-config <本地 MJS 配置> [--name <工程名>] [--port <画布端口>] [--yes]
   atlas build --url <本地 Flutter Web 地址> [--ready-text <就绪文字>]
-  atlas build|capture [--config <配置文件>] [--profile <名称>]
+  atlas build|capture [--config <配置文件>] [--profile <名称>] [--force]
   atlas record [--config <配置文件>] [--journeys]
   atlas view [--config <配置文件>] [--port <端口>] [--profile <名称>]
+  atlas doctor [--config <configuration>]
   atlas --help | --version`;
 
 async function artifactLocation({config, directory, managed}) {
@@ -116,18 +119,22 @@ async function view(input, portOverride) {
     publicPath,
     sourceFingerprint,
     liveSessions,
+    workspaceOutput: input.baseOutput ?? output,
+    profileName: input.profile?.name ?? null,
+    workspaceStatus: isStandardProject(input) ? bundle => annotateWorkspaceFreshness(bundle, directory) : undefined,
     config: {
       artifactPaths: [publicPath],
       shell: {title: config.title ?? 'Flutter UI Atlas', ...viewer?.shell},
       sharedRoles: viewer?.sharedRoles,
       captureHint:
         viewer?.captureHint ??
-        (implicit ? 'atlas build --url <本地 Flutter Web 地址> --ready-text <就绪文字>' : 'atlas build'),
+        (implicit ? 'atlas build --url <local-web-url> --ready-text <ready-text>' : 'atlas build'),
       fingerprintUrl: sourceFingerprint ? '/__atlas/source' : undefined,
+      workspaceStatusUrl: isStandardProject(input) ? '/__atlas/workspaces' : undefined,
       preview: liveSessions ? undefined : browserPreview,
       layoutKey:
         config.layoutKey ??
-        `atlas:${createHash('sha256').update(output).digest('hex').slice(0, 16)}:${viewport.width}x${viewport.height}:v1`
+        `atlas:${createHash('sha256').update(output).digest('hex').slice(0, 16)}:${isStandardProject(input) ? 'workspace-v2' : `${viewport.width}x${viewport.height}:v1`}`
     }
   });
 }
@@ -149,7 +156,8 @@ export async function runAtlas(args = process.argv.slice(2)) {
         yes: {type: 'boolean', short: 'y'},
         'adapter-config': {type: 'string'},
         'no-open': {type: 'boolean'},
-        profile: {type: 'string'}
+        profile: {type: 'string'},
+        force: {type: 'boolean'}
       }
     });
     if (values.help) {
@@ -162,6 +170,22 @@ export async function runAtlas(args = process.argv.slice(2)) {
       return 0;
     }
     const [command] = positionals;
+    if (command === 'doctor') {
+      let project;
+      try {
+        project = await resolveProjectConfig({configFile: values.config});
+      } catch (error) {
+        if (values.config) throw error;
+      }
+      const report = await diagnose({
+        config: project?.implicit ? undefined : project?.config,
+        directory: project?.directory
+      });
+      console.log(JSON.stringify(report, null, 2));
+      return report.ok ? 0 : 1;
+    }
+    if (values.force && command !== 'build' && command !== 'capture')
+      throw Error('--force is only supported for build/capture.');
     if (command === 'config') {
       if (
         positionals.length !== 1 ||
@@ -233,12 +257,16 @@ export async function runAtlas(args = process.argv.slice(2)) {
     if (discovery) {
       if (!validViewport(viewport)) throw Error('viewport 的 width 和 height 必须是正整数');
       const mode = building ? 'capture' : values.journeys ? 'journeys' : 'manual';
-      const result = await runDiscovery({
-        ...input,
-        discovery,
-        viewport,
-        mode,
-        launchBrowser: () => openChrome(mode !== 'manual', resolveBrowserChannel(input.config))
+      const result = await withApplicationWriter(input, async () => {
+        const result = await runDiscovery({
+          ...input,
+          discovery,
+          viewport,
+          mode,
+          launchBrowser: () => openChrome(mode !== 'manual', resolveBrowserChannel(input.config))
+        });
+        await publishLegacyWorkspaces(input, result);
+        return result;
       });
       console.log(
         JSON.stringify({
@@ -252,15 +280,21 @@ export async function runAtlas(args = process.argv.slice(2)) {
     }
     if (command === 'record') throw Error('录制需要 discovery 配置');
     if (isStandardProject(input))
-      return buildStandard(input, profiles, () => openChrome(true, resolveBrowserChannel(input.config)));
+      return buildStandard(input, profiles, () => openChrome(true, resolveBrowserChannel(input.config)), {
+        force: values.force === true
+      });
     if (profiles.length > 1 || profiles[0].name) throw Error('命名视口需要标准 .atlas/atlas.yaml 页面配置');
-    const result = await capture({
-      output: input.output,
-      publicPath: input.publicPath,
-      viewport: input.config.viewport ?? defaultViewport,
-      requireObservedEdges: input.config.requireObservedEdges,
-      adapter: () => captureAdapter(input),
-      launchBrowser: () => openChrome(true, resolveBrowserChannel(input.config))
+    const result = await withApplicationWriter(input, async () => {
+      const result = await capture({
+        output: input.output,
+        publicPath: input.publicPath,
+        viewport: input.config.viewport ?? defaultViewport,
+        requireObservedEdges: input.config.requireObservedEdges,
+        adapter: () => captureAdapter(input),
+        launchBrowser: () => openChrome(true, resolveBrowserChannel(input.config))
+      });
+      await publishLegacyWorkspaces(input, result);
+      return result;
     });
     const summary = {
       captureId: result.captureId,
